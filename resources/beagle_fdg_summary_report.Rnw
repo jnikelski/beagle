@@ -1,0 +1,242 @@
+<<echo=FALSE>>=
+# load Loris and rmincIO libraries
+library(lorisStatistics)
+
+# read passed arguments from args file
+# (1) keyname           [ e.g., tofty]
+# (2) rootDir           [ the Loris output root, containing all keyname subdirs]
+# (3) analysis_type     [ VBM, PiB, FDG, THICKNESS, etc ... must match subdir prefix]
+# (4) scan_date         [ YYYYMMDD ... must match subdir suffix]
+# (5) settings_filename [ fullpath to the aggregated settings file]
+#
+source("args_file.txt")
+
+# read the Beagle aggregated settings file
+settings <- read_loris_aggregated_settings(settings_filename, verbose=FALSE)
+#print(settings)
+
+
+# construct useful filename
+fdg_subdir <- paste(analysis_type, scan_date, sep="-")
+fdg_subdir_fullPath <- file.path(rootDir, keyname, fdg_subdir)
+fdg_images_subdir_fullPath <- file.path(fdg_subdir_fullPath, 'images')
+fdg_tal_subdir_fullPath <- file.path(fdg_subdir_fullPath, 'tal')
+fdg_ratios_subdir_fullPath <- file.path(fdg_subdir_fullPath, 'ratios')
+
+
+# read the scan date for the associated anatomy from the "civet_scan_id.txt" file
+# that has cleverly been placed in the modality root dir
+civet_scanId_filename_fullpath <-file.path(fdg_subdir_fullPath, "civet_scan_id.txt")
+civet_string <- read.csv(civet_scanId_filename_fullpath, header=FALSE, stringsAsFactors=FALSE)[1,1]
+# get the scan date (the second component) from the civetId (eg. "apatosaurus-20090217")
+civet_scan_date <- unlist(strsplit(civet_string,"-"))[2]
+# now create a pleasing full subdir path
+masks_dirname <- paste('MASKS-', civet_scan_date, sep="")
+masks_subdir_fullPath <- file.path(rootDir, keyname, masks_dirname)
+
+# read the fdg volume name ... and then get some stuff
+#fdg_volname <- paste(keyname, "_talAligned.mnc", sep="")
+#fdg_volume_fullPath <- file.path(fdg_tal_subdir_fullPath, fdg_volname)
+#fdg_volume <- mincIO.readMincInfo(fdg_volume_fullPath)
+
+# get the ratios volume name ... might come in handy some day
+ratios_volume <- paste(keyname, "_fdgRatios_noMask.mnc", sep="")
+ratios_volume_fullPath <- file.path(fdg_subdir_fullPath, ratios_volume)
+
+
+# read cerebellar GM mask
+cerebellar_gm_mask_filename <- "cerebellum_mask_gm.mnc"
+cerebellar_gm_mask_filename_fullPath <- file.path(masks_subdir_fullPath, cerebellar_gm_mask_filename)
+cerebellar_gm_mask <- mincIO.readVolume(cerebellar_gm_mask_filename_fullPath, volumeType='mask')
+cerebellar_gm_mask_nVoxels <- sum(cerebellar_gm_mask)
+#
+# read the attenuated cerebellar GM mask --- will be fewer voxels, if cerebellum truncated 
+fdgMasks_subdir_fullPath <- file.path(fdg_subdir_fullPath, 'masks')
+fdgAttenuated_cerebellar_gm_mask_filename <- paste(keyname, "_binarized_masked_fdgVol.mnc", sep="")
+fdgAttenuated_cerebellar_gm_mask_filename_fullPath <- file.path(fdgMasks_subdir_fullPath, fdgAttenuated_cerebellar_gm_mask_filename)
+fdgAttenuated_cerebellar_gm_mask <- mincIO.readVolume(fdgAttenuated_cerebellar_gm_mask_filename_fullPath, volumeType='mask')
+fdgAttenuated_cerebellar_gm_mask_nVoxels <- sum(fdgAttenuated_cerebellar_gm_mask)
+#
+# subtract attenuated from full, and count the changed voxels
+deltaVoxels <- cerebellar_gm_mask_nVoxels - fdgAttenuated_cerebellar_gm_mask_nVoxels
+pctDiff <- (fdgAttenuated_cerebellar_gm_mask_nVoxels / cerebellar_gm_mask_nVoxels) *100
+
+
+# generate the image filenames used
+img_averageSurfaceViz_filename = paste(keyname, "_fdgRatios_averageSurfaceViz.png", sep="")
+img_averageSurfaceViz_fullPath = file.path(fdg_images_subdir_fullPath, img_averageSurfaceViz_filename)
+#
+img_individualSurfaceViz_filename = paste(keyname, "_fdgRatios_individualSurfaceViz.png", sep="")
+img_individualSurfaceViz_fullPath = file.path(fdg_images_subdir_fullPath, img_individualSurfaceViz_filename)
+#
+img_volumetricViz_filename = paste(keyname, "_fdgRatios_volumetricViz.pdf", sep="")
+img_volumetricViz_fullPath = file.path(fdg_images_subdir_fullPath, img_volumetricViz_filename)
+#
+img_reference_volumetricViz_filename = paste(keyname, "_talAligned.pdf", sep="")
+img_reference_volumetricViz_fullPath = file.path(fdg_images_subdir_fullPath, img_reference_volumetricViz_filename)
+
+@
+
+
+\chapter{Findings: \texttt{FDG-\Sexpr{scan_date}}}
+In this chapter, we present the findings of the fluorodeoxyglucose (FDG) image analysis of subject \texttt{\Sexpr{keyname}}, based on the dynamic scan acquired on \texttt{\Sexpr{scan_date}}.
+
+\section{Validation}
+While there are probably countless things that one could validate, there are a couple of things to check that will likely cover most of the things that could go wrong: (1) in-scanner subject misalignment, and (2) missing or partically missing cerebellum (i.e. not in the scanner's field of view).
+
+
+The degree of intactness of the cerebellum is, of course, only of significance if we are using the cerebellum as the reference tissue -- which, at this point in time, we are. Scanning as much of the cerebellum is important to us since, as there will be some degree of variability in FDG uptake within the cerebellum, the more we scan, the more stable our reference value will be. Consequently, it was decided to try to check for possible cerebellar truncation both via validation images (discussed next) as well as algorithmically. 
+
+
+The algorithm works by applying the cerebellar gray matter mask to the FDG intensity image, and looking to see if any of the mask voxels have little or no signal. Any such voxels are assumed to have been outside of the scanner's field of view. So, for subject \texttt{\Sexpr{keyname}}, the algorithm has determined the following: Of the \textbf{\Sexpr{cerebellar_gm_mask_nVoxels}} voxels comprising the cerebellar gray matter mask, \textbf{\Sexpr{fdgAttenuated_cerebellar_gm_mask_nVoxels}} voxels \textbf{(\Sexpr{sprintf("%.2f",pctDiff)} percent)} were found to have had at least some FDG signal.  If this algorithm suggests significant cerebellar truncation, that truncation should be visible in the following verification images.
+
+
+Figures \ref{fig:fdg_ref_volumetric_axial} to \ref{fig:fdg_ref_volumetric_coronal} show the FDG signal overlayed onto \texttt{\Sexpr{keyname}'s} anatomy. Both volumes are in linearly transformed stereotactic space. The primary purpose of this series of images is to verify alignment.  The FDG overlay, while not perfect, should be pretty much centered over the brain. The cerebellum should show full coverage, as Alzheimer's disease \emph{usually} does not affect the cerebellum. Any asymmetry in cerebellar coverage should be noted. 
+
+
+% FDG volumtric visualization of verification volume
+% ... individual brain in stereotactic space
+% 
+% axial
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=1,trim=0cm 5cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{img_reference_volumetricViz_fullPath}}
+\end{center}
+\caption[FDG Validation: Axial slices]{Intensity normalized FDG values displayed as axial slices overlayed onto \texttt{\Sexpr{keyname}'s} spatially normalized T1 scan.}
+\label{fig:fdg_ref_volumetric_axial}
+\end{figure}
+
+% sagittal
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=2,trim=0cm 9cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{img_reference_volumetricViz_fullPath}}
+\end{center}
+\caption[FDG Validation: Sagittal slices]{Intensity normalized FDG values displayed as sagittal slices overlayed onto \texttt{\Sexpr{keyname}'s} spatially normalized T1 scan.}
+\label{fig:fdg_ref_volumetric_sagittal}
+\end{figure}
+
+% coronal
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=3,trim=0cm 4cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{img_reference_volumetricViz_fullPath}}
+\end{center}
+\caption[FDG Validation: Coronal slices]{Intensity normalized FDG values displayed as coronal slices overlayed onto \texttt{\Sexpr{keyname}'s} spatially normalized T1 scan.}
+\label{fig:fdg_ref_volumetric_coronal}
+\end{figure}
+
+
+
+\clearpage
+%\pagebreak[4]
+\section{FDG Ratios}
+Once \texttt{\Sexpr{keyname}} has been validated, we can have a look at the actual results, starting with the SUVR values presented in Table~\ref{tab:fdg_suvr}. As mentioned in section~\ref{fdg_suvr_computation}, the SUVR value is a weighted average, with the ROI weights based on ROI size as a proportion of the total volume measured. As seen in Table~\ref{tab:fdg_suvr}, we have computed SUVR values across 3 different total volume values: (1) all cerebral gray matter, (2) all cortical gray matter, which should be the same as (1) minus the sub-cortical gray matter, and (3) all neo-cortical gray matter, which is the same as (2) minus the allocortical regions.  As the bulk of the volume is comprised of neocortical areas, the 3 SUVR values are usually similar.  Table~\ref{tab:fdg_ratios} provides a breakdown of the ratios, by ROI, comprising the SUVR values. As discussed in section~\ref{fdg_preprocesing}, we have provisionally decided to use a ratio value of 0.80 as the threshold for significance, and as such, the ratio images show regions in which the FDG signal is only at 80\% or less compared to the cerebellar gray reference value. This cut-off value is considered to be quite liberal, and may be revised in the future.
+
+
+%
+% do the computations required for display of SUVR and
+% ratio values
+<<echo=FALSE>>=
+library(xtable)
+
+# construct the full pathname to the ratios csv file, 
+# ... and then load it in
+csv_ratios_filename <- paste(keyname, "_fdgRatios_SUVRs_", settings$AAL_LABELS_VERSION, ".csv", sep="")
+csv_ratios_fullPath <- file.path(fdg_ratios_subdir_fullPath, csv_ratios_filename)
+ratios.df <- read.csv(csv_ratios_fullPath, header=TRUE, stringsAsFactors=FALSE)
+
+# remove the first 3 subject ID columns
+ratios.df <- subset(ratios.df, select=Description:suvr)
+
+# create a variable coding hemisphere 
+# ... extract "_L" or "_R" from the end of the LabelName field
+ratios.df$side <- substr(ratios.df$LabelName, 
+         nchar(ratios.df$LabelName) -1, 
+         nchar(ratios.df$LabelName))
+
+# ... and now make it a factor
+ratios.df$side <- factor(ratios.df$side, levels=c("_L","_R"), labels=c("Lh","Rh"))
+
+
+# Prepare the SUVR Summary Table
+#
+# split off the SUVR summary rows (the last 3 rows) and select only those columns that we care about
+suvr.df <- ratios.df[ratios.df$LabelName=='SUVR',]
+suvr.df <- subset(suvr.df,,select=c(Description, nVoxels, suvr))
+
+# change column name from "suvr" to "SUVR"
+names(suvr.df)[match("suvr", names(suvr.df))] <- "SUVR"
+
+# format the SUVR summary table for printing
+suvr.table <- xtable(suvr.df)
+caption(suvr.table) <- "FDG SUVR Values"
+label(suvr.table) <- "tab:fdg_suvr"
+digits(suvr.table)[c(4)] <- 3
+align(suvr.table) <- c("l","l","r","r")
+
+
+# Prepare the ROI Ratios Table
+#
+# remove the SUVR summary rows (the last 3 rows)
+ratiosX.df <- ratios.df[ratios.df$LabelName!='SUVR',]
+ratiosX.df <- subset(ratiosX.df,,select=c(Description, side, nVoxels, suvr))
+
+# change column name from "suvr" to "ratio"
+names(ratiosX.df)[match("suvr", names(ratiosX.df))] <- "ratio"
+
+# sort by ratio value
+ratiosX.df <- ratiosX.df[order(ratiosX.df$ratio, decreasing=FALSE),]
+
+# add some extra formatting
+ratios.table <- xtable(ratiosX.df)
+caption(ratios.table) <- "FDG Ratio Values sorted in ascending order"
+label(ratios.table) <- "tab:fdg_ratios"
+digits(ratios.table)[c(5)] <- 3
+align(ratios.table) <- c("l","l","l","r","r")
+@
+
+<<results=tex, echo=FALSE>>=
+print(suvr.table, floating=TRUE, include.rownames=FALSE, type="latex", caption.placement="top")
+@
+
+\clearpage
+<<results=tex, echo=FALSE>>=
+print(ratios.table, floating=TRUE, include.rownames=FALSE, type="latex", tabular.environment = "longtable", caption.placement="top")
+@
+
+
+% FDG volumtric visualization
+% ... individual brain in stereotactic space
+% 
+% axial
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=1,trim=0cm 5cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{img_volumetricViz_fullPath}}
+\end{center}
+\caption[Volumetric FDG: Axial slices]{FDG ratios overlayed onto \texttt{\Sexpr{keyname}'s} spatially normalized T1 scan displayed as axial slices. Displayed ratios, transformed to reflect percentage decrease in signal relative to the reference tissue, are thresholded at \Sexpr{settings$FDG_VOLUMETRIC_VIZ_FLOOR} to \Sexpr{settings$FDG_VOLUMETRIC_VIZ_CEILING} (hotter colours reflect more hypometabolism).}
+\label{fig:fdg_volumetric_axial}
+\end{figure}
+
+% sagittal
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=2,trim=0cm 9cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{img_volumetricViz_fullPath}}
+\end{center}
+\caption[Volumetric FDG: Sagittal slices]{FDG ratios overlayed onto \texttt{\Sexpr{keyname}'s} spatially normalized T1 scan displayed as sagittal slices. Displayed ratios, transformed to reflect percentage decrease in signal relative to the reference tissue, are thresholded at \Sexpr{settings$FDG_VOLUMETRIC_VIZ_FLOOR} to \Sexpr{settings$FDG_VOLUMETRIC_VIZ_CEILING} (hotter colours reflect more hypometabolism).}
+\label{fig:fdg_volumetric_sagittal}
+\end{figure}
+
+% coronal
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=3,trim=0cm 4cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{img_volumetricViz_fullPath}}
+\end{center}
+\caption[Volumetric FDG: Coronal slices]{FDG ratios overlayed onto \texttt{\Sexpr{keyname}'s} spatially normalized T1 scan displayed as coronal slices. Displayed ratios, transformed to reflect percentage decrease in signal relative to the reference tissue, are thresholded at \Sexpr{settings$FDG_VOLUMETRIC_VIZ_FLOOR} to \Sexpr{settings$FDG_VOLUMETRIC_VIZ_CEILING} (hotter colours reflect more hypometabolism).}
+\label{fig:fdg_volumetric_coronal}
+\end{figure}
+
+
+
+
+
+
+

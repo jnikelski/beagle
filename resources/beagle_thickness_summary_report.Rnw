@@ -1,0 +1,335 @@
+<<echo=FALSE>>=
+# load Loris and rmincIO libraries (and Lattice)
+library(lorisStatistics)
+library(xtable)
+
+# read passed arguments from args file
+# (1) keyname           [ e.g., tofty]
+# (2) rootDir           [ the Loris output root, containing all keyname subdirs]
+# (3) analysis_type     [ VBM, PiB, FDG, THICKNESS, etc ... must match subdir prefix]
+# (4) scan_date         [ YYYYMMDD ... must match subdir suffix]
+# (5) settings_filename [ fullpath to the aggregated settings file]
+#
+source("args_file.txt")
+
+# read the Beagle aggregated settings file
+settings <- read_loris_aggregated_settings(settings_filename, verbose=FALSE)
+#print(settings)
+
+
+# define some useful constants
+#N_VERTICES_CORTEX <- 81924 
+N_VERTICES_CORTEX <- as.integer(settings$CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN)
+N_VERTICES_HEMISPHERE <- N_VERTICES_CORTEX / 2
+
+
+# construct useful filename
+cta_subdir <- paste(analysis_type, scan_date, sep="-")
+cta_subdir_fullPath <- file.path(rootDir, keyname, cta_subdir)
+cta_images_subdir_fullPath <- file.path(cta_subdir_fullPath, 'images')
+
+
+# generate the image filenames (thickness in mm)
+img_averageSurfaceViz_mm_filename = paste(keyname, "_thickness_mm_averageSurfaceViz.png", sep="")
+img_averageSurfaceViz_mm_fullPath = file.path(cta_images_subdir_fullPath, img_averageSurfaceViz_mm_filename)
+#
+img_individualSurfaceViz_mm_filename = paste(keyname, "_thickness_mm_individualSurfaceViz.png", sep="")
+img_individualSurfaceViz_mm_fullPath = file.path(cta_images_subdir_fullPath, img_individualSurfaceViz_mm_filename)
+
+# generate the image filenames (zscores)
+img_averageSurfaceViz_zscores_filename = paste(keyname, "_thickness_zscores_averageSurfaceViz.png", sep="")
+img_averageSurfaceViz_zscores_fullPath = file.path(cta_images_subdir_fullPath, img_averageSurfaceViz_zscores_filename)
+#
+img_individualSurfaceViz_zscores_filename = paste(keyname, "_thickness_zscores_individualSurfaceViz.png", sep="")
+img_individualSurfaceViz_zscores_fullPath = file.path(cta_images_subdir_fullPath, img_individualSurfaceViz_zscores_filename)
+
+
+@
+
+\chapter{Findings: \texttt{CTA-\Sexpr{scan_date}}}
+In this chapter, we present the cortical thickness analysis findings for subject \texttt{\Sexpr{keyname}}, based on the T1 scan acquired on \texttt{\Sexpr{scan_date}}. 
+
+\section{Measurement of Cortical Thickness}
+Table~\ref{tab:cta_thickness_summary} shows the breakdown of thickness values by hemisphere. Brains not affected by a hemisphere-specific pathological process should show very similar values over both hemispheres. The distribution of vertex-level thickness values are illustrated in Figure~\ref{fig:cta_thickness_distribution}. One would expect the distributions across hemispheres to be very similar in normal individuals.
+
+
+%
+% Raw cortical thickness details: show a summary table and a graph
+%
+<<echo=FALSE>>=
+
+# read in the thickness values
+thickness_filename <- paste(keyname, '_thickness_lhrh.txt', sep="")
+thickness_fullPath <- file.path(cta_subdir_fullPath, thickness_filename)
+thickness.v <- scan(file=thickness_fullPath)
+stopifnot( length(thickness.v) == N_VERTICES_CORTEX ) 
+#
+# put into a data.frame, and label by hemisphere
+side <- c(rep(1,N_VERTICES_HEMISPHERE), rep(2,N_VERTICES_HEMISPHERE))
+thickness.df <- data.frame(thickness=thickness.v, 
+                                side=factor(side, levels=c(1,2), labels=c("Lh","Rh")))
+
+# create a data.frame of useful summary information
+thickness_summary.df <- data.frame(side=c("Lh","Rh"), 
+                                   min=c(0,0), max=c(0,0), 
+                                   mean=c(0,0), stdev=c(0,0),
+                                   median=c(0,0))
+
+# compute summary statistics
+thickness_summary.df$min <- tapply(thickness.df$thickness, thickness.df$side, min)
+thickness_summary.df$max <- tapply(thickness.df$thickness, thickness.df$side, max)
+thickness_summary.df$mean <- tapply(thickness.df$thickness, thickness.df$side, mean)
+thickness_summary.df$stdev <- tapply(thickness.df$thickness, thickness.df$side, sd)
+thickness_summary.df$median <- tapply(thickness.df$thickness, thickness.df$side, median)
+
+# prepare the thickness table for printing
+# add some extra formatting
+thickness_summary.table <- xtable(thickness_summary.df[,c(1:6)])
+caption(thickness_summary.table) <- "Cortical Thickness by Hemisphere"
+label(thickness_summary.table) <- "tab:cta_thickness_summary"
+digits(thickness_summary.table)[c(3)] <- 2
+digits(thickness_summary.table)[c(4)] <- 2
+digits(thickness_summary.table)[c(5)] <- 2
+digits(thickness_summary.table)[c(6)] <- 2
+digits(thickness_summary.table)[c(6)] <- 2
+align(thickness_summary.table) <- c("l","l","r","r","r","r","r")
+@
+
+<<results=tex, echo=FALSE>>=
+print(thickness_summary.table, floating=TRUE, include.rownames=FALSE, type="latex", caption.placement="top")
+@
+
+%
+% Raw cortical thickness details: make and show the density plot
+%
+<<echo=FALSE>>=
+# create a density plot of cortical thickness values
+
+# set the outpur filename
+imgOut_filename <- paste(keyname, "_thickness_mm_plot.pdf", sep="")
+imgOut_ctRaw_fullPath <- file.path(cta_images_subdir_fullPath, imgOut_filename)
+
+# create the plot and write it out
+pdf(file=imgOut_ctRaw_fullPath, width=6, height=4)
+p0 <- densityplot( ~ thickness, groups=side, data=thickness.df, plot.points=FALSE, type=c("p","g"), lwd=2,
+                        xlab=list("Cortical Thickness (mm)"), xlim=c(1,6),
+                        main=list("Distribution of Native Thickness Values"), lty=c(1,2),
+                        panel = function(x, ...) {
+                            panel.densityplot(x, ...)
+                            panel.abline(v=mean(x), lty=2)
+                        })
+# print the plot, and then close graphics device (capuring the needless response in dummy)
+print(p0)
+dummy <- dev.off()
+@
+
+% plot the distribution of native thickness values 
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=1,trim=0cm 0cm 0cm 0cm,clip=true,width=16cm]{\Sexpr{imgOut_ctRaw_fullPath}}
+\end{center}
+\caption[Cortical Thickness: Distribution by Hemisphere]{Distribution of vertex-level thickness values by hemisphere. The solid line represents the left hemisphere, whereas the dashed line reflects the right.  The vertical dashed line indicates the overall mean thickness.}
+\label{fig:cta_thickness_distribution}
+\end{figure}
+
+
+
+\section{Distribution of Z-Scores}
+As was discussed in section~\ref{cta_methods}, vertex-level comparisons were made between subject \texttt{\Sexpr{keyname}} and the normal elderly control group. Hemispheric-level descriptive statistics can be found in Table~\ref{tab:cta_zscores_summary}, whereas a comparison of z-score distribution by hemisphere can be seen in Figure~\ref{fig:cta_zscores_distribution}. As was the case for the thickness values discussed in the previous section, one would normally expect little inter-hemispheric difference in a normal individual.
+
+
+%
+% Z-score details: show a summary table and a graph
+% ... this is mostly just a copy-paste of the above code
+%
+<<echo=FALSE>>=
+
+# read in the thickness values
+zscores_filename <- paste(keyname, '_thickness_zscores.txt', sep="")
+zscores_fullPath <- file.path(cta_subdir_fullPath, zscores_filename)
+zscores.v <- scan(file=zscores_fullPath)
+stopifnot( length(zscores.v) == N_VERTICES_CORTEX ) 
+#
+# put into a data.frame, and label by hemisphere
+side <- c(rep(1,N_VERTICES_HEMISPHERE), rep(2,N_VERTICES_HEMISPHERE))
+zscores.df <- data.frame(zscores=zscores.v, 
+                                side=factor(side, levels=c(1,2), labels=c("Lh","Rh")))
+
+# create a data.frame of useful summary information
+zscores_summary.df <- data.frame(side=c("Lh","Rh"), 
+                                   min=c(0,0), max=c(0,0), 
+                                   mean=c(0,0), stdev=c(0,0),
+                                   median=c(0,0))
+
+# compute summary statistics
+zscores_summary.df$min <- tapply(zscores.df$zscores, zscores.df$side, min)
+zscores_summary.df$max <- tapply(zscores.df$zscores, zscores.df$side, max)
+zscores_summary.df$mean <- tapply(zscores.df$zscores, zscores.df$side, mean)
+zscores_summary.df$stdev <- tapply(zscores.df$zscores, zscores.df$side, sd)
+zscores_summary.df$median <- tapply(zscores.df$zscores, zscores.df$side, median)
+
+# prepare the z-scores table for printing
+# add some extra formatting
+zscores_summary.table <- xtable(zscores_summary.df[,c(1:6)])
+caption(zscores_summary.table) <- "Z-Scores by Hemisphere"
+label(zscores_summary.table) <- "tab:cta_zscores_summary"
+digits(zscores_summary.table)[c(3)] <- 2
+digits(zscores_summary.table)[c(4)] <- 2
+digits(zscores_summary.table)[c(5)] <- 2
+digits(zscores_summary.table)[c(6)] <- 2
+digits(zscores_summary.table)[c(6)] <- 2
+align(zscores_summary.table) <- c("l","l","r","r","r","r","r")
+@
+
+<<results=tex, echo=FALSE>>=
+print(zscores_summary.table, floating=TRUE, include.rownames=FALSE, type="latex", caption.placement="top")
+@
+
+%
+% Z-Score details: make and show the density plot
+%
+<<echo=FALSE>>=
+# create a density plot of z-score values
+
+# set the outpur filename
+imgOut_filename <- paste(keyname, "_thickness_zscores_plot.pdf", sep="")
+imgOut_zscores_fullPath <- file.path(cta_images_subdir_fullPath, imgOut_filename)
+
+# create the plot and write it out
+pdf(file=imgOut_zscores_fullPath, width=6, height=4)
+p1 <- densityplot( ~ zscores, groups=side, data=zscores.df, plot.points=FALSE, type=c("p","g"), lwd=2,
+                        xlab=list("Z-Scores"),
+                        main=list("Distribution of Z-Score Values"), lty=c(1,2),
+                        panel = function(x, ...) {
+                            panel.densityplot(x, ...)
+                            panel.abline(v=mean(x), lty=2)
+                        })
+# print the plot, and then close graphics device (capuring the needless response in dummy)
+print(p1)
+dummy <- dev.off()
+@
+
+% plot the distribution of z-score values 
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=1,trim=0cm 0cm 0cm 0cm,clip=true,width=16cm]{\Sexpr{imgOut_zscores_fullPath}}
+\end{center}
+\caption[Cortical Thickness: Z-Score Distribution by Hemisphere]{Distribution of vertex-level z-score values by hemisphere. The solid line represents the left hemisphere, whereas the dashed line reflects the right.  The vertical dashed line indicates the mean z-score over both hemispheres.}
+\label{fig:cta_zscores_distribution}
+\end{figure}
+
+
+
+
+\section{Analysis by Region of Interest}
+Table~\ref{tab:cta_zscores_by_roi} expands upon the summary statistics presented above, by computing mean thickness and z-score information by region of interest. ROIs are sorted in ascending order such that those ROIs that demonstrate the greatest mean individual-to-control group difference are presented first.  Figures \ref{fig:cta_individual_surface_mm} and \ref{fig:cta_average_surface_mm} serve to visualize thickness information on both the individual's and an averaged cortical surface.  Image thresholding is fixed between 1.5 and 6.0 mm across all subjects so that the researcher might be able to develop a sense of what a normal thickness pattern lools like.  It must be noted that what appears as unusally thin cortex over the primary motor and sensory strip \emph{is not correct}. Poor tissue contrast in this region results in erroneous tissue classification results, translating to incorrect thickness values. Claude Lepage has assured us that this problem is an issue of image quality related to scanner acquisition parameters, and as such, all other processing pipelines would likely exhibit a similar problem.\footnote{Claude's claim appears to have some merit --- visual inspection of primary motor or sensory cortex using a sample of T1 scans does indeed show very poor tissue contrast. It is an open question whether a modified scanning protocol might produce better contrast in this problem region. A previous attempt (by J. Nikelski) to enhance contrast by averaging multiple scans of the same subject did not help significantly. Also of note is that the poor contrast is also seen in the ADNI volumes --- thus the problem is not only an MNI scanning protocol problem.}
+
+Significant differences in cortical thickness between subject \texttt{\Sexpr{keyname}} and the normal elderly control group are visualized in Figures \ref{fig:cta_individual_surface_zscores} and \ref{fig:cta_average_surface_zscores}.
+
+
+
+
+
+
+
+%
+% do the computations required for display of the z-scores and thickness values
+%
+<<echo=FALSE>>=
+
+# construct the full pathname to the ratios csv file, 
+# ... and then load it in
+csv_thickness_filename <- paste(keyname, "_thickness_statistics_by_roi_", settings$AAL_LABELS_VERSION, ".csv", sep="")
+csv_thickness_fullPath <- file.path(cta_subdir_fullPath, csv_thickness_filename)
+thickness.df <- read.csv(csv_thickness_fullPath, header=TRUE, stringsAsFactors=FALSE)
+
+# remove the first 3 subject ID columns
+thickness.df <- subset(thickness.df, select=Description:z_stdev)
+
+# create a variable coding hemisphere
+thickness.df$side <- substr(thickness.df$LabelName, 
+         nchar(thickness.df$LabelName) -1, 
+         nchar(thickness.df$LabelName))
+# ... and now make it a factor
+thickness.df$side <- factor(thickness.df$side, levels=c("_L","_R"), labels=c("Lh","Rh"))
+
+# sort by z-score
+thickness.df <- thickness.df[order(thickness.df$z_mean, decreasing=FALSE),]
+
+# select only those columns that we care about
+thicknessX.df <- subset(thickness.df,,select=c(Description, side, size:z_stdev))
+
+# change some column names to something better
+names(thicknessX.df)[4] <- "mean"
+names(thicknessX.df)[5] <- "stdev"
+
+
+# prepare the ratios table for printing
+# add some extra formatting
+thickness.table <- xtable(thicknessX.df[,c(1:7)])
+caption(thickness.table) <- "Analysis by Region of Interest"
+label(thickness.table) <- "tab:cta_zscores_by_roi"
+digits(thickness.table)[c(5)] <- 2
+digits(thickness.table)[c(6)] <- 2
+digits(thickness.table)[c(7)] <- 2
+digits(thickness.table)[c(8)] <- 2
+align(thickness.table) <- c("l","l","l","r","r","r","r","r")
+@
+
+
+\clearpage
+<<results=tex, echo=FALSE>>=
+print(thickness.table, floating=TRUE, include.rownames=FALSE, type="latex", tabular.environment = "longtable", caption.placement="top")
+@
+
+
+
+
+% Cortical thickness visualization (in mm) -- Individual surface
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[trim=0cm 0cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{img_individualSurfaceViz_mm_fullPath}}
+\end{center}
+\caption[Cortical Thickness: Individual Surface]{Cortical thickness values (in mm) rendered onto \texttt{\Sexpr{keyname}}'s individual gray matter surface, in stereotactic space. Thickness values, which represent the thickness of the cortex (in mm) at an equivalent coordinate on the native-space brain, range between 1.5 mm (darkest) and 6.0 mm (white). }
+\label{fig:cta_individual_surface_mm}
+\end{figure}
+
+% Cortical thickness visualization (in mm) -- Average surface
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[trim=0cm 0cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{img_averageSurfaceViz_mm_fullPath}}
+\end{center}
+\caption[Cortical Thickness: Average Surface]{Cortical thickness values (in mm) rendered onto an averaged gray matter surface, in stereotactic space. Thickness values, which represent the thickness of the cortex (in mm) at an equivalent coordinate on the native-space brain, range between 1.5 mm (darkest) and 6.0 mm (white). }
+\label{fig:cta_average_surface_mm}
+\end{figure}
+
+
+
+
+% Cortical thickness visualization (z-scores) -- Individual surface
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[trim=0cm 0cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{img_individualSurfaceViz_zscores_fullPath}}
+\end{center}
+\caption[Cortical Thickness Z-Scores: Individual Surface]{Cortical thickness z-scores rendered onto \texttt{\Sexpr{keyname}}'s individual gray matter surface (in stereotactic space), reflecting a comparison of \texttt{\Sexpr{keyname}} against a normal elderly control group. Displayed z-scores are thresholded between $\Sexpr{settings$THICKNESS_SURFACE_VIZ_REL_POS}$ and $\Sexpr{settings$THICKNESS_SURFACE_VIZ_REL_NEG}$; with a z-score of $\Sexpr{settings$THICKNESS_SURFACE_VIZ_REL_POS}$ reflecting $p<0.01$ (one-tailed, uncorrected). Darker colours reflect larger magnitude z-scores.}
+\label{fig:cta_individual_surface_zscores}
+\end{figure}
+
+% Cortical thickness visualization (z-scores) -- Average surface
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[trim=0cm 0cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{img_averageSurfaceViz_zscores_fullPath}}
+\end{center}
+\caption[Cortical Thickness Z-Scores: Average Surface]{Cortical thickness z-scores rendered onto an averaged gray matter surface (in stereotactic space), reflecting a comparison of \texttt{\Sexpr{keyname}} against a normal elderly control group. Displayed z-scores are thresholded between $\Sexpr{settings$THICKNESS_SURFACE_VIZ_REL_POS}$ and $\Sexpr{settings$THICKNESS_SURFACE_VIZ_REL_NEG}$; with a z-score of $\Sexpr{settings$THICKNESS_SURFACE_VIZ_REL_POS}$ reflecting $p<0.01$ (one-tailed, uncorrected). Darker colours reflect larger magnitude z-scores.}
+\label{fig:cta_average_surface_zscores}
+\end{figure}
+
+
+
+
+
+
+
+
+
+

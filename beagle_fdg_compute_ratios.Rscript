@@ -1,0 +1,233 @@
+#!/usr/bin/Rscript   --default-packages=utils,methods,base,stats,grDevices
+# ==============================================================================
+# PURPOSE:
+#
+usage_text <- 
+"\nbeagle_fdg_compute_ratios.Rscript [options] "
+#
+description_text <- 
+"\n\n   The Purpose of this script is to perform FDG ratio volume generation 
+for a given subject.
+"
+#
+# ==============================================================================
+
+# Set options
+options(width=180)
+
+
+# <Parsing>
+#
+# parse the input line to grab our options and arguments
+suppressPackageStartupMessages(library("optparse"))
+#
+# set up a list of allowable options
+option_list <- list(
+   make_option(c("-v", "--verbose"), 
+         action="store_true", 
+         type="logical", default=FALSE, 
+         help="Generate all sorts of messages [default is *not* verbose]"),
+               
+   make_option(c("-d", "--debug"), 
+         action="store_true", 
+         type="logical", default=FALSE, 
+         help="Generate debug messages"),
+               
+   make_option(c("--keyname"), 
+         action="store", 
+         type="character", default=NULL, dest="keyname",
+         help="Subject keyname (E.g. \"yueh\")"),
+               
+   make_option(c("--scanDate"), 
+         action="store", 
+         type="character", default=NULL, dest="scanDate",
+         help="FDG scan date for subject. (E.g. \"20071009\")"),
+
+   make_option(c("--civetScanDate"), 
+         action="store", 
+         type="character", default=NULL, dest="civetScanDate",
+         help="Civet scan date for subject. (E.g. \"20071009\")"),
+               
+   make_option(c("--settingsFile"), 
+         action="store", 
+         type="character", default=NULL, dest="settingsFile",
+         help="Fullpath to the aggregated settings file")
+)
+#
+#
+# ... create the parser, and then parse the command line
+header_text <- paste(usage_text, description_text, sep="")
+parser <- OptionParser(usage=header_text, option_list=option_list)
+optX <- parse_args(parser, args=commandArgs(trailingOnly=TRUE), positional_arguments=TRUE)
+
+# ... move options and args into separate, more convenient structures
+O <- optX$options
+
+# check for the correct number of input volumes
+if ( length(optX$args) > 0 ){
+   stop("Extra positional arguments have been specified. Please stop that.")
+}
+#
+# </Parsing>
+
+
+
+#DEBUG ===========================================
+#O$ <- list()
+#O$verbose <- TRUE
+#O$debug <- TRUE
+#O$keyname <- "fenrir"
+#O$scanDate <- "20071009"
+#O$settingsFile <- "..."
+#
+log_file <- "loggingBySGE"
+#DEBUG ===========================================
+
+
+# add some extra derived values to the input packet
+O$scanId <- paste(O$keyname, O$scanDate, sep="-")
+O$civetScanId <- paste(O$keyname, O$civetScanDate, sep="-")
+O$fdg_dirname <- paste("FDG", O$scanDate, sep="-")
+
+
+# if the log is being written to SGE, then don't log internally
+if ( log_file != "loggingBySGE" ) {
+   sink(log_file)
+   options(echo=FALSE)
+}
+
+
+
+# = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
+#
+
+# load the HCLab Loris Analyis library
+library(lorisStatistics)
+#suppressPackageStartupMessages(library(lorisStatistics))  
+
+
+# read the Loris aggregated settings file (in JSON format)
+#cat(sprintf("BEFORE settings load\n"))
+settings <- read_loris_aggregated_settings(O$settingsFile, verbose=TRUE)
+#cat(sprintf("AFTER settings load\n"))
+
+
+
+# define some useful subdirectories
+LORIS_ROOT_DIR <- settings$LORIS_ROOT_DIR
+keyname_dir_fullPath <- file.path(LORIS_ROOT_DIR, O$keyname)
+
+# FDG-related paths
+fdgDir <- file.path(keyname_dir_fullPath, O$fdg_dirname)
+fdgDir_ratios <- file.path(fdgDir, "ratios")
+fdgDir_logs <- file.path(fdgDir, "logs")
+fdgDir_images <- file.path(fdgDir, "images")
+fdgDir_masks <- file.path(fdgDir, "masks")
+fdgDir_tal <- file.path(fdgDir, "tal")
+
+# MASKS-related paths
+masks_dirname <- paste("MASKS", O$civetScanDate, sep="-")
+masksDir <- file.path(keyname_dir_fullPath, masks_dirname)
+
+# civet-related paths
+CIVET_VERSION <- settings$CIVET_VERSION
+CIVET_PREFIX <- paste(settings$CIVET_PREFIX, '_', sep='')
+CIVET_ROOT_DIR <- settings$CIVET_ROOT_DIR
+civet_subject_rootDir <- file.path(CIVET_ROOT_DIR, O$civetScanId)
+
+
+
+# set some useful constants
+FDG_VOLUME_SUFFIX <- "_talAligned_06mmBlur.mnc"
+BINARIZED_MASKED_FDGVOL_SUFFIX = '_binarized_masked_fdgVol.mnc'
+#
+GM_MASK_VOLNAME <- "wholeBrain_gray_matter_mask.mnc"
+GM_MASK_VOLNAME_FULLPATH <- file.path(masksDir, GM_MASK_VOLNAME)
+
+
+
+# set working directory as the FDG subject root dir
+wrkDir <- fdgDir
+setwd(wrkDir)
+
+
+
+# load subject's master logfile, and then write a start message
+llogger <- loris_logger_loadFromFile(O$keyname, settings)
+progname <- 'beagle_fdg_compute_ratios.Rscript'
+llogger <- loris_logger_logStartMessage(progname, O$keyname, 'FDG', O$scanDate, llogger)
+llogger <- loris_logger_logMessage(progname, O$keyname, 'FDG',
+                                       O$scanDate,
+                                       'civet_version', CIVET_VERSION,
+                                       llogger)
+
+
+# set the status to "running"
+cat(sprintf("Generating an FDG ratio volume for %s\n", O$scanId))
+status_filename_running <- "beagle_fdg_compute_ratios_JobStatus.running"
+status_filename_running <- file.path(fdgDir_logs, status_filename_running)
+file.create(status_filename_running)
+
+
+# read masked FDG volume (e.g. "aragorn_binarized_masked_fdgVol.mnc")
+# ... this should be a subset of the full cerebellar GM mask, taking 
+# ... cerebellar trucation (due to acquisition error) into account
+filename <- paste(O$keyname, BINARIZED_MASKED_FDGVOL_SUFFIX, sep="")
+cerebGM_mask_volname <- file.path(fdgDir_masks, filename)
+cerebGM_mask_vol <- mincIO.readVolume(cerebGM_mask_volname, volumeType="mask")
+
+
+# get the actual (blurred) FDG volume
+filename <- paste(O$keyname, FDG_VOLUME_SUFFIX, sep="")
+fdg_volname <- file.path(fdgDir_tal, filename)
+fdg_vol <- mincIO.readVolume(fdg_volname, volumeType="functional")
+
+
+# firstly, we need to get a cerebellar average
+#
+# ... apply cerebellar mask to FDG volumeType
+fdg_cereb_vol <- fdg_vol * cerebGM_mask_vol
+cereb_vec <- fdg_cereb_vol[fdg_cereb_vol > 0.0]
+cereb_vec_mean <- mean(cereb_vec)
+
+
+# create the ratio volume and then write it out
+fdg_ratio_vol <- fdg_vol / cereb_vec_mean
+
+# write out the ratio volume and then term.
+filename <- file.path(fdgDir_ratios, paste(O$keyname, "_fdgRatios_noMask.mnc", sep=""))
+mincIO.writeVolume(fdg_ratio_vol, filename, clobber=TRUE)
+
+
+# apply the gray matter mask, and then write of a masked version
+#
+# ... read the gray matter mask
+gm_mask_vol <- mincIO.readVolume(GM_MASK_VOLNAME_FULLPATH, volumeType="mask")
+fdg_ratio_vol <- fdg_ratio_vol * gm_mask_vol
+filename <- file.path(fdgDir_ratios, paste(O$keyname, "_fdgRatios_gmMask.mnc", sep=""))
+mincIO.writeVolume(fdg_ratio_vol, filename, clobber=TRUE)
+
+
+# close log file
+if ( log_file != "loggingBySGE" ) {
+   sink()
+}
+
+# set the status to "finished"
+status_filename_finished <- "beagle_fdg_compute_ratios_JobStatus.finished"
+status_filename_finished <- file.path(fdgDir_logs, status_filename_finished)
+file.rename(status_filename_running, status_filename_finished)
+
+# log a 'done' message to the subject's master logfile, and then write out logfile
+llogger <- loris_logger_logStopMessage(progname, O$keyname, 'FDG', O$scanDate, llogger)
+loris_logger_saveToFile(O$keyname, llogger, settings)
+
+# print the log entries (for fun)
+logger.df <- loris_logger_loadFromFileAsDataFrame(O$keyname, settings)
+options(width=9999)
+print(logger.df)
+
+
+
+q(save="no")
+

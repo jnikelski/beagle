@@ -1,0 +1,298 @@
+#!/usr/bin/Rscript   --default-packages=utils,methods,base,stats,grDevices
+# ==============================================================================
+# PURPOSE:
+#
+usage_text <- 
+"\nbeagle_vbm_quantification.Rscript [options] GM_z-score_volume.mnc WM_z-score_volume.mnc"
+#
+description_text <- 
+"\n\n   The purpose of this script is to perform VBM quantification 
+of individual VBM results. Input volumes consist of gray and white matter 
+VBM results, containing a z-score at each voxel.  Gray matter VBM results
+are cast into an AAL template, thus providing quantification by AAL ROI. 
+AAL quantification is not provided for white matter, since the AAL template 
+is gray matter only.
+
+"
+#
+# ==============================================================================
+
+# Set options
+options(width=180)
+
+
+# <Parsing>
+#
+# parse the input line to grab our options and arguments
+suppressPackageStartupMessages(library("optparse"))
+#
+# set up a list of allowable options
+option_list <- list(
+   make_option(c("-v", "--verbose"), 
+         action="store_true", 
+         type="logical", default=FALSE, 
+         help="Generate all sorts of messages [default is *not* verbose]"),
+               
+   make_option(c("-d", "--debug"), 
+         action="store_true", 
+         type="logical", default=FALSE, 
+         help="Generate debug messages"),
+               
+   make_option(c("--keyname"), 
+         action="store", 
+         type="character", default=NULL, dest="keyname",
+         help="Subject keyname (E.g. \"yueh\")"),
+               
+   make_option(c("--scanDate"), 
+         action="store", 
+         type="character", default=NULL, dest="scanDate",
+         help="Civet scan date for subject. (E.g. \"20071009\")"),
+               
+   make_option(c("--settingsFile"), 
+         action="store", 
+         type="character", default=NULL, dest="settingsFile",
+         help="Fullpath to the aggregated settings file"),
+               
+   make_option(c("--logDir"), 
+         action="store", 
+         type="character", default=NULL, dest="logDir",
+         help="Fullpath of log/status file output directory")
+)
+#
+#
+# ... create the parser, and then parse the command line
+header_text <- paste(usage_text, description_text, sep="")
+parser <- OptionParser(usage=header_text, option_list=option_list)
+optX <- parse_args(parser, args=commandArgs(trailingOnly=TRUE), positional_arguments=TRUE)
+
+# ... move options and args into separate, more convenient structures
+opts_in <- optX$options
+
+# check for the correct number of input volumes
+if ( length(optX$args) != 2 ){
+   stop("We need 2 input args")
+}
+args_in <- list()
+args_in$gm_zscore_volname_fullpath <- optX$args[1]
+args_in$wm_zscore_volname_fullpath <- optX$args[2]
+
+#
+# </Parsing>
+
+
+#DEBUG 1 ===========================================
+#opts_in <- list()
+#opts_in$verbose <- TRUE
+#opts_in$debug <- TRUE
+#opts_in$keyname <- "baal"
+#opts_in$scanDate <- "20080506"
+#opts_in$settingsFile <- "..."
+#
+#args_in <- list()
+#args_in$gm_zscore_volname_fullpath <- "/data/raid01/lorisData/zzzOutput_loris_12.06.13/baal/VBM-20080506/baal_gmVBM_zScores.mnc"
+#args_in$wm_zscore_volname_fullpath <- "/data/raid01/lorisData/zzzOutput_loris_12.06.13/baal/VBM-20080506/baal_wmVBM_zScores.mnc"
+#
+log_file <- "loggingBySGE"
+#DEBUG 1 ===========================================
+
+
+# add some extra derived values to the input packet
+opts_in$scanId <- paste(opts_in$keyname, opts_in$scanDate, sep="-")
+opts_in$vbm_dirname <- paste("VBM", opts_in$scanDate, sep="-")
+
+
+# if the log is being written to SGE, then don't log internally
+if ( log_file != "loggingBySGE" ) {
+   sink(log_file)
+   options(echo=FALSE)
+}
+
+
+
+# = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
+#
+
+# load the HCLab Loris Analyis library
+library(lorisStatistics)
+#suppressPackageStartupMessages(library(lorisStatistics))  
+
+# read the Loris aggregated settings file (in JSON format)
+#cat(sprintf("BEFORE settings load\n"))
+settings <- read_loris_aggregated_settings(opts_in$settingsFile, verbose=TRUE)
+#cat(sprintf("AFTER settings load\n"))
+
+LORIS_DEBUG <- settings$LORIS_DEBUG
+if ( LORIS_DEBUG == "ON" ) {LORIS_DEBUG <- TRUE}
+CIVET_VERSION <- settings$CIVET_VERSION
+CIVET_PREFIX <- paste(settings$CIVET_PREFIX, '_', sep='')
+
+AAL_LABELS_VERSION <- settings$AAL_LABELS_VERSION
+AAL_LABELS_DIR <- settings$AAL_LABELS_DIR
+AAL_LABELS_NAMES <- settings$AAL_LABELS_NAMES
+AAL_LABELS_DESCRIPTION_FILE <- file.path(AAL_LABELS_DIR, AAL_LABELS_NAMES)
+AAL_LABELS_VBM_VOLUME <- settings$AAL_LABELS_VBM_VOLUME
+
+
+# set some useful constants/variables
+zTholds <- c(-2.33, -3.09, -3.71)
+zTholds_pValues <- c("0.01", "0.001", "0.0001")
+
+# define some useful subdirectories
+LORIS_ROOT_DIR <- settings$LORIS_ROOT_DIR
+loris_subject_rootDir <- file.path(LORIS_ROOT_DIR, opts_in$keyname)
+vbm_subject_rootDir <- file.path(loris_subject_rootDir, opts_in$vbm_dirname)
+vbm_subject_logsDir <- file.path(vbm_subject_rootDir, "logs")
+
+# set working directory as the VBM subject root dir
+wrkDir <- vbm_subject_rootDir
+setwd(wrkDir)
+
+
+
+# load subject's master logfile, and then write a start message
+llogger <- loris_logger_loadFromFile(opts_in$keyname, settings)
+progname <- 'beagle_vbm_quantification.Rscript'
+llogger <- loris_logger_logStartMessage(progname, opts_in$keyname, 'VBM', opts_in$scanDate, llogger)
+llogger <- loris_logger_logMessage(progname, opts_in$keyname, 'VBM',
+                                       opts_in$scanDate,
+                                       'civet_version', CIVET_VERSION,
+                                       llogger)
+
+# set the status to "running"
+cat(sprintf("Performing VBM quantification processing for %s\n", opts_in$scanId))
+status_filename_running <- "beagle_vbm_quantification_JobStatus.running"
+status_filename_running <- file.path(vbm_subject_logsDir, status_filename_running)
+file.create(status_filename_running)
+
+
+# read in the AAL label details
+lblFile <- AAL_LABELS_DESCRIPTION_FILE
+lbl_details.df <- load_AAL_label_info(lblFile)
+#lbl_details.df <- subset(lbl_details.df, lbl_details.df$isCerebrum != 0 )
+
+
+# quantify supra-threshold voxels over all ROIs
+#
+# loop over a number of different thresholds
+cat(sprintf("Quantifying using the following z-score thresholds ...\n"))
+for ( ndx in 1:length(zTholds) ) {
+   cat(sprintf("%d. %g [p=%s]\n", ndx, zTholds[ndx], zTholds_pValues[ndx]))
+}
+
+
+# QUANTIFY THE GM for all thresholds
+# ... we get a list comprised of 1 data.frame for each threshold
+gmQuant.lst <- vbm_quantify_by_roi(args_in$gm_zscore_volname_fullpath, 
+                                 file.path(AAL_LABELS_DIR, AAL_LABELS_VBM_VOLUME), 
+                                 lbl_details.df,
+                                 zTholds)
+print(gmQuant.lst)
+   
+
+# rename the thresholded results columns, then aggregate them
+for ( ndx in 1:length(zTholds) ) {
+
+   # ... nSupraTholdVxls
+   names(gmQuant.lst[[ndx]])[1] <- paste(names(gmQuant.lst[[ndx]])[1], "_", zTholds_pValues[ndx], sep="")
+   # ... nSupraTholdVxlsROI
+   names(gmQuant.lst[[ndx]])[3] <- paste(names(gmQuant.lst[[ndx]])[3], "_", zTholds_pValues[ndx], sep="")
+}
+
+
+# bind like the columns together
+tholded_results_total <- cbind(gmQuant.lst[[1]][1], gmQuant.lst[[2]][1], gmQuant.lst[[3]][1]) 
+tholded_results_roi <- cbind(gmQuant.lst[[1]][3], gmQuant.lst[[2]][3], gmQuant.lst[[3]][3])
+
+
+# write out the results to a csv file (append keyname and dirname first)
+gmQuant_csv.df <- cbind(uniqueId=paste(opts_in$keyname, opts_in$vbm_dirname, sep="-"),
+                        keyname=opts_in$keyname, 
+                        dirname=opts_in$vbm_dirname, 
+                        subset(lbl_details.df,,select=c(Description:isSecondaryLbl)), 
+                        tholded_results_total,
+                        nVxlsROI=gmQuant.lst[[1]]$nVxlsROI,
+                        tholded_results_roi, stringsAsFactors=FALSE)
+csvFilename <- paste(opts_in$keyname,
+                     "_gmVbm_quantification_by_roi_",
+                     AAL_LABELS_VERSION,
+                     ".csv", sep="")
+csvFilenameFullPath <- file.path(vbm_subject_rootDir, csvFilename)
+write.csv(gmQuant_csv.df, csvFilenameFullPath, row.names=FALSE)
+
+
+
+# Ok, all of the heavy lifting is done, now let's output
+# a file that provides us with a total number of supra-threshold
+# voxels for both GM and WM
+
+# Gray Matter
+#
+# read the VBM stats volume, threshold, and count
+tStatVol <- mincIO.readVolume(args_in$gm_zscore_volname_fullpath)
+#
+gm_total_supra_thold <- c()
+for ( ndx in 1:length(zTholds) ) {
+   tStatVol_masked <- ifelse(tStatVol < zTholds[ndx], 1, 0)
+   gm_total_supra_thold <- c(gm_total_supra_thold,sum(tStatVol_masked))
+   cat(sprintf("Total GM supra-threshold voxels: %d  [z-score=%g, p=%s] \n", 
+                                                            gm_total_supra_thold[ndx],
+                                                            zTholds[ndx],
+                                                            zTholds_pValues[ndx]))
+}
+
+
+# White Matter
+#
+# read the VBM stats volume, threshold, and count
+tStatVol <- mincIO.readVolume(args_in$wm_zscore_volname_fullpath)
+#
+wm_total_supra_thold <- c()
+for ( ndx in 1:length(zTholds) ) {
+   tStatVol_masked <- ifelse(tStatVol < zTholds[ndx], 1, 0)
+   wm_total_supra_thold <- c(wm_total_supra_thold,sum(tStatVol_masked))
+   cat(sprintf("Total WM supra-threshold voxels: %d  [z-score=%g, p=%s] \n", 
+                                                            wm_total_supra_thold[ndx],
+                                                            zTholds[ndx],
+                                                            zTholds_pValues[ndx]))
+}
+
+
+
+# move to receiving data.frame and then write these out
+vbm_summary.df <- data.frame(uniqueId=paste(opts_in$keyname, opts_in$vbm_dirname, sep="-"),
+                              keyname=opts_in$keyname, 
+                              dirname=opts_in$vbm_dirname,
+                              zThold=zTholds,
+                              pThold=zTholds_pValues,
+                              gm_nVoxels=gm_total_supra_thold,
+                              wm_nVoxels=wm_total_supra_thold, stringsAsFactors=FALSE)
+
+#
+csvFilename <- paste(opts_in$keyname,
+                     "_vbm_quantification_summary_", AAL_LABELS_VERSION, ".csv", sep="")
+                     
+                     
+csvFilenameFullPath <- file.path(vbm_subject_rootDir, csvFilename)
+write.csv(vbm_summary.df, csvFilenameFullPath, row.names=FALSE)
+
+
+
+# close log file
+if ( log_file != "loggingBySGE" ) {
+   sink()
+}
+
+# set the status to "finished"
+status_filename_finished <- "beagle_vbm_quantification_JobStatus.finished"
+status_filename_finished <- file.path(vbm_subject_logsDir, status_filename_finished)
+file.rename(status_filename_running, status_filename_finished)
+
+
+# log a 'done' message to the subject's master logfile, and then write out logfile
+llogger <- loris_logger_logStopMessage(progname, opts_in$keyname, 'VBM', opts_in$scanDate, llogger)
+loris_logger_saveToFile(opts_in$keyname, llogger, settings)
+
+
+
+q(save="no")
+

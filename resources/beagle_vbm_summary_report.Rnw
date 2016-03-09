@@ -1,0 +1,257 @@
+<<echo=FALSE>>=
+# load Loris and rmincIO libraries
+library(lorisStatistics)
+
+# read passed arguments from args file
+# (1) keyname           [ e.g., tofty]
+# (2) rootDir           [ the Loris output root, containing all keyname subdirs]
+# (3) analysis_type     [ VBM, PiB, FDG, THICKNESS, etc ... must match subdir prefix]
+# (4) scan_date         [ YYYYMMDD ... must match subdir suffix]
+# (5) settings_filename [ fullpath to the aggregated settings file]
+#
+source("args_file.txt")
+
+# read the Beagle aggregated settings file
+settings <- read_loris_aggregated_settings(settings_filename, verbose=FALSE)
+#print(settings)
+
+# construct useful filename
+vbm_subdir <- paste(analysis_type, scan_date, sep="-")
+vbm_subdir_fullPath <- file.path(rootDir, keyname, vbm_subdir)
+vbmImages_subdir_fullPath <- file.path(vbm_subdir_fullPath, 'images')
+
+# get the volume name ... might come in handy some day
+gmVbm_zscores_volume <- paste(keyname, "_gmVBM_zScores.mnc", sep="")
+gmVbm_zscores_volume_fullPath <- file.path(vbm_subdir_fullPath, gmVbm_zscores_volume)
+wmVbm_zscores_volume <- paste(keyname, "_wmVBM_zScores.mnc", sep="")
+wmVbm_zscores_volume_fullPath <- file.path(vbm_subdir_fullPath, wmVbm_zscores_volume)
+#
+# generate the jpg filenames used
+pdf_gm_filename <- paste(keyname, "_gmVBM_zScores.pdf", sep="")
+pdf_gm_fullPath <- file.path(vbmImages_subdir_fullPath, pdf_gm_filename)
+pdf_wm_filename <- paste(keyname, "_wmVBM_zScores.pdf", sep="")
+pdf_wm_fullPath <- file.path(vbmImages_subdir_fullPath, pdf_wm_filename)
+
+@
+
+\chapter{Findings: \texttt{VBM-\Sexpr{scan_date}}}
+In this chapter, we present the findings of the voxel-based morphometric (VBM) analysis for subject \texttt{\Sexpr{keyname}}, based on the T1 scan acquired on \texttt{\Sexpr{scan_date}}. Before we start with the review of the results, let's first be careful \emph{never} to interpret the number of voxels reported as volume of tissue loss. Doing this is really quite tempting, since, given that our voxels are 1-mm isometric, it would be very simple to report our findings as a volume. Reviewers would not be pleased if we did this. It would be better to interpret the number of supra-threshold voxels as an indicator of relative atrophy, and should be used in our analyses as such.
+
+<<echo=FALSE>>=
+# read in the simple summary table
+library(xtable)
+summary_csvFilename <- paste(keyname, "_vbm_quantification_summary_", settings$AAL_LABELS_VERSION, ".csv", sep="")
+summary_csvFilename_fullPath <- file.path(vbm_subdir_fullPath, summary_csvFilename)
+tissue_summary.df <- read.csv(summary_csvFilename_fullPath, stringsAsFactors=FALSE)
+
+print_table.df <- subset(tissue_summary.df,,select=c(pThold, zThold, gm_nVoxels, wm_nVoxels))
+row.names(print_table.df) <- 1:3
+names(print_table.df) <- c("p-value", "z-score", "GM Voxels", "WM Voxels")
+
+# format summary table for printing
+summary.table <- xtable(print_table.df)
+caption(summary.table) <- "VBM Quantification Values by Tissue Type"
+label(summary.table) <- "tab:vbm_summary"
+digits(summary.table)[c(2)] <- 4
+align(summary.table) <- c("l", "r","r","r","r")
+@
+
+<<results=tex, echo=FALSE>>=
+print(summary.table, floating=TRUE, include.rownames=FALSE, type="latex", caption.placement="top", size="small")
+@
+
+OK, now let's begin with a review of the quantitative findings.  Table~\ref{tab:vbm_summary} presents the total number of supra-threshold voxels for both gray and white matter VBM, for a given threshold value. For example, a z-score threshold of \texttt{\Sexpr{print_table.df[1, "z-score"]}} corresponds to \texttt{\Sexpr{print_table.df[1, "GM Voxels"]}} supra-threshold gray matter voxels, and \texttt{\Sexpr{print_table.df[1, "WM Voxels"]}} supra-threshold white matter voxels. The associated probability values are computed reflecting a z-distribution (one-tailed), uncorrected for multiple comparisons. Note that even subjects with no atrophy may show some supra-threshold voxels; subjects with significant atrophy will show thousands of voxels.
+
+
+%
+% do the computations required for display of VBM ROI
+% quantification values
+<<echo=FALSE>>=
+# construct the full pathname to the ratios csv file, 
+# ... and then load it in
+byROI_csvFilename <- paste(keyname, "_gmVbm_quantification_by_roi_", settings$AAL_LABELS_VERSION, ".csv", sep="")
+byROI_csvFilename_fullPath <- file.path(vbm_subdir_fullPath, byROI_csvFilename)
+byROI.df <- read.csv(byROI_csvFilename_fullPath, header=TRUE, stringsAsFactors=FALSE)
+
+# compute some derived values and change some column name(s)
+# ... first, let's separate the data.frame into sections
+header.df <- subset(byROI.df,, c(Description, LabelName, nVxlsROI))
+names(header.df)[match("nVxlsROI", names(header.df))] <- "sizeROI"
+
+#
+switches.df <- subset(byROI.df,, select=c(isCerebrum:isSecondaryLbl))
+#
+total_voxels_supThold.df <- subset(byROI.df,, select=c(nSupraTholdVxls_0.01:nSupraTholdVxls_0.0001))
+total_voxelsROI_supThold.df <- subset(byROI.df,, select=c(nSupraTholdVxlsROI_0.01:nSupraTholdVxlsROI_0.0001))
+
+
+# compute percentage of ROI showing atrophy (using the p=0.01 threshold)
+pctROI <- (total_voxelsROI_supThold.df$nSupraTholdVxlsROI_0.01 / byROI.df$nVxlsROI) * 100
+pctROI[is.na(pctROI)] <- 0
+
+# compute the percentage of total atrophy accounted for by this ROI
+pctAll <- (total_voxelsROI_supThold.df$nSupraTholdVxlsROI_0.01 / total_voxels_supThold.df$nSupraTholdVxls_0.01) * 100
+pctAll[is.na(pctAll)] <- 0
+
+# create a data.frame for display, customized for p=0.01 thresholded results
+byROI_01.df <-  data.frame(header.df,
+                           nVoxels=total_voxelsROI_supThold.df$nSupraTholdVxlsROI_0.01,
+                           pctROI,
+                           pctAll)
+
+# create a variable coding hemisphere (as a factor)
+# ... extract "_L" or "_R" from the end of the LabelName field
+byROI_01.df$side <- substr(byROI_01.df$LabelName, nchar(byROI_01.df$LabelName) -1, nchar(byROI_01.df$LabelName))
+byROI_01.df$side <- factor(byROI_01.df$side, levels=c("_L","_R"), labels=c("Lh","Rh"))
+
+
+# split the data.frame into neo-cortical and other, in order
+# to decrease the size of the tables
+#
+# ... get neoCortical
+neoCortical.df <- subset(byROI_01.df, switches.df$isNeoCortical==1)
+#
+# ... get non-neoCortical and unlabeled ("Not gray matter")
+xNeoCortical.df <- subset(byROI_01.df, switches.df$isNeoCortical == 0 & switches.df$isCerebrum == 1)
+#
+# ... get cerebellar and unlabeled ("Not gray matter")
+cerebellar.df <- subset(byROI_01.df, switches.df$isNeoCortical == 0 & switches.df$isCerebrum == 0)
+
+#
+# Neo-Cortical
+#
+# sort and select only the columns of interest
+neoCortical.df <- neoCortical.df[order(neoCortical.df$pctROI, decreasing=TRUE),]
+neoCortical.df <- subset(neoCortical.df,,select=c(Description, side, sizeROI, nVoxels, pctROI, pctAll))
+#
+# format the neoCortical table for printing (sorted by pctROI, descending)
+neoCortical.table <- xtable(neoCortical.df)
+caption(neoCortical.table) <- "Neo-Cortical Quantification Values"
+label(neoCortical.table) <- "tab:vbm_neoCortical"
+#digits(neoCortical.table)[c(4)] <- 3
+align(neoCortical.table) <- c("l","l","l","r","r","r","r")
+
+#
+# Non-Neo-Cortical
+#
+# sort and select only the columns of interest
+xNeoCortical.df <- xNeoCortical.df[order(xNeoCortical.df$pctROI, decreasing=TRUE),]
+xNeoCortical.df <- subset(xNeoCortical.df,,select=c(Description, side, sizeROI, nVoxels, pctROI, pctAll))
+
+# format the non-neoCortical table for printing (sorted by pctROI, descending)
+xNeoCortical.table <- xtable(xNeoCortical.df)
+caption(xNeoCortical.table) <- "Sub-Cortical Quantification Values"
+label(xNeoCortical.table) <- "tab:vbm_xNeoCortical"
+#digits(xNeoCortical.table)[c(4)] <- 3
+align(xNeoCortical.table) <- c("l", "l", "l", "r", "r", "r", "r")
+
+#
+# Cerebellar
+#
+# sort and select only the columns of interest
+cerebellar.df <- cerebellar.df[order(cerebellar.df$pctROI, decreasing=TRUE),]
+cerebellar.df <- subset(cerebellar.df,,select=c(Description, side, sizeROI, nVoxels, pctROI, pctAll))
+
+# format the cerebellar table for printing (sorted by pctROI, descending)
+cerebellar.table <- xtable(cerebellar.df)
+caption(cerebellar.table) <- "Cerebellar Quantification Values"
+label(cerebellar.table) <- "tab:vbm_cerebellar"
+#digits(cerebellar.table)[c(4)] <- 3
+align(cerebellar.table) <- c("l","l","l","r","r","r","r")
+@
+
+
+Tables~\ref{tab:vbm_xNeoCortical}, \ref{tab:vbm_cerebellar}, \ref{tab:vbm_neoCortical} show the results of the quantification by ROI. Note that since the AAL labels only label gray matter ROIs, quantification by ROI is only available for our gray matter VBM results. First, let's clarify the headings used:
+\begin{description}
+\item[sizeROI] The total size, in voxels, of the ROI, as defined in the AAL template. Note that since all subjects use the ICBM-fitted template, this size should be the same across all subjects.
+\item[nVoxels] The number of supra-threshold gray matter voxels (i.e. those voxels of interest) identified within this ROI. Threshold for significance is set at $p=0.01$.
+\item[pctROI] The percentage of total ROI comprised of supra-threshold voxels. As such, this value is computed as \texttt{$nVoxels/sizeROI \times 100$}. The purpose of this value is to give an indication of the degree to which a particular ROI is affected by atrophy.
+\item[pctAll] The percentage of total gray matter supra-threshold voxels (for this tissue type) accounted for by this ROI. This value tries to put the localized atrophy into a global context.  For example, it might tell us that a particular ROI accounts for 40\% of all atrophy. Of course, since this value is not normalized by ROI size, larger ROIs are likely to account for a larger proportion of the supra-threshold voxels.
+\end{description}
+
+Given the above clarification, interpretation of the information in the tables should be pretty straight-forward.  Of note, however, is Table~\ref{tab:vbm_cerebellar}, which contains an ROI that is quite non-cerebellar in nature: ``not gray matter''. This ROI serves as a catch-all for all supra-threshold voxels which fall outside of the AAL template. That is, whenever a supra-threshold voxel is encountered that does not map to any of the AAL ROIs, it is counted here. This is mostly for quality control purposes, but if we see the count of voxels in this ROI getting too big, we may need to contemplate adjustments to our AAL template. If you're interested in identifying where these voxels are, simpley use ``register'' to overlay the z-score volume onto the ICBM AAL template volume, threshold the z-score volume, and look and see which voxels fall outside of the template regions. 
+
+<<results=tex, echo=FALSE>>=
+print(xNeoCortical.table, floating=TRUE, include.rownames=FALSE, type="latex", caption.placement="top", size="small")
+@
+
+<<results=tex, echo=FALSE>>=
+print(cerebellar.table, floating=TRUE, include.rownames=FALSE, type="latex", caption.placement="top", size="small")
+@
+
+\clearpage
+<<results=tex, echo=FALSE>>=
+print(neoCortical.table, floating=TRUE, include.rownames=FALSE, type="latex", tabular.environment = "longtable", caption.placement="top", size="small")
+@
+
+
+
+
+\clearpage
+The following images were created by super-imposing thresholded z-scores onto \texttt{\Sexpr{keyname}'s} spatially normalized T1 scan. Note that since we are most interested in detecting atrophy in the subject relative to the normal elderly model, the z-scores of interest will all be negative, indicating a significant decrease in gray or white matter density.  The images are thresholded at $p<0.01$ (uncorrected), which reflects a one-tailed z-score of $\approx$ -2.33.
+
+% GM axial
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=1,trim=0cm 5cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{pdf_gm_fullPath}}
+\end{center}
+\caption[Gray matter VBM: Axial slices]{Gray matter VBM axial slices in which z-scores are overlayed onto \texttt{\Sexpr{keyname}'s} spatially normalized T1 scan.}
+\label{fig:gm_vbm_axial}
+\end{figure}
+
+% GM sagittal
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=2,trim=0cm 9cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{pdf_gm_fullPath}}
+\end{center}
+\caption[Gray matter VBM: Sagittal slices]{Gray matter VBM sagittal slices in which z-scores are overlayed onto \texttt{\Sexpr{keyname}'s} spatially normalized T1 scan.}
+\label{fig:gm_vbm_sagittal}
+\end{figure}
+
+% GM coronal
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=3,trim=0cm 4cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{pdf_gm_fullPath}}
+\end{center}
+\caption[Gray matter VBM: Coronal slices]{Gray matter VBM coronal slices in which z-scores are overlayed onto \texttt{\Sexpr{keyname}'s} spatially normalized T1 scan.}
+\label{fig:gm_vbm_coronal}
+\end{figure}
+
+% WM axial
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=1,trim=0cm 5cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{pdf_wm_fullPath}}
+\end{center}
+\caption[White matter VBM: Axial slices]{White matter VBM axial slices in which z-scores are overlayed onto \texttt{\Sexpr{keyname}'s} spatially normalized T1 scan.}
+\label{fig:wm_vbm_axial}
+\end{figure}
+
+% WM sagittal
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=2,trim=0cm 9cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{pdf_wm_fullPath}}
+\end{center}
+\caption[White matter VBM: Sagittal slices]{White matter VBM sagittal slices in which z-scores are overlayed onto \texttt{\Sexpr{keyname}'s} spatially normalized T1 scan.}
+\label{fig:wm_vbm_sagittal}
+\end{figure}
+
+% WM coronal
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=3,trim=0cm 4cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{pdf_wm_fullPath}}
+\end{center}
+\caption[White matter VBM: Coronal slices]{White matter VBM coronal slices in which z-scores are overlayed onto \texttt{\Sexpr{keyname}'s} spatially normalized T1 scan.}
+\label{fig:wm_vbm_coronal}
+\end{figure}
+
+
+
+
+
+
+
+
+
+
+
+

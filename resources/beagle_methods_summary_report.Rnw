@@ -1,0 +1,193 @@
+\chapter{Methods}
+
+\section{The ldiAdni200 Model}
+The current version of the Beagle pipeline makes use of a new normal elderly-specific model for both ROI labelling, and subject-level VBM. In earlier versions, ROI labels were applied to the individual (stereotactic space) brains by warping labels derived from a labelled ICBM symmetrical VI model, which in turn, was labelled by warping the original colin27 AAL labels onto the ICBM model. Unfortunately, this process resulted in compounded fitting errors, which yielded sub-optimal results.  The creation of a new elderly-specific model was meant to address these AAL fitting issues. 
+
+
+\subsection{AAL Labels and the colin27 Brain}
+As the original AAL labels were painted onto the high-resolution colin27 brain, both labels and anatomy should align perfectly. Unfortunately, although we did have a colin27 volume stored in minc format, we were only able to acquire the AAL labels in the Nifti volume format.  This volume was then converted to minc and subsequenly adjusted to fit the colin27 hi-resolution volume. This was necessary, since volume conversions from or to Nifti/SPM/Analyze often results in shifts of a voxel in one or more of the dimensions. At this point, a minor customization of the AAL labels was perfromed, by splitting the middle temporal gyrus bilaterally  into 3 equivalently sized regions (anterior, middle, posterior). This resulted in the number of ROIs increasing from 116 to 120. Henceforth, references to the AAL labels will refer to the customized 120 ROI version.
+
+
+\subsection{Fitting AAL Labels}
+Error within the new model was minimized by directly fitting 200 normal elderly subjects to the colin27 high-resolution volume. Inversion of the transformation files permitted us to warp the labels back onto the elderly subject's brains, yielding 200 labelled normal elderly brains. These labelled brains served as the basis for the new elderly-specific AAL labelling template. More specifically, the process was as follows:
+
+\begin{enumerate}
+  \item 200 normal elderly control brains were acquired from the ADNI project. Selected scans reflected the ``baseline'' scan condition.
+  \item The 200 brains were converted to minc volume format and entered into the Civet processing pipeline. All brains were fit to the ICBM symmetrical VI model (lsq12), yielding many products, including, (1) volumes in stereotactic space, and (2) tissue classified volumes.  
+  \item Each stereotactic volume was nonlinearly fit to the colin27 volume using a 2-mm grid, yielding one transformation file per subject.
+  \item The transformation file was inverted and then applied to the AAL label volume (aligned to colin27), yielding 200 label volumes in ICBM symmetrical VI space.
+  \item Each of the 200 label volumes was ``exploded'' into 120 masks (one mask for each ROI), yielding $200*120=24000$ mask volumes.
+  \item Each mask volume was blurred using an 8-mm 3-dimensional Gaussian filter in order to account (somewhat) for individual variability in brain morphometry, and to get finer gradients in the probability volumes.
+  \item For each ROI, blurred volumes for all subjects were averaged to create a probability atlas for that ROI. At the conclusion of this process, we had 120 probability volumes.
+  \item A final single AAL template volume was created by examining each voxel and labelling it according to the AAL probability volume the had the highest probability value at that voxel.
+  \item Additional template volumes were created, in which the above-described labelling ``competition'' was variably \textit{biased against the background label}, in favor of the next-highest AAL label.  
+\end{enumerate}
+
+The purpose of the \textit{background label handicapped} volumes mentioned in the final step is two-fold. Firstly, looking at the non-handicapped labelled volume, one can see discretely labelled ROIs in which the boundaries of the ROIs are frequently labelled as background. This is due to the fact that as one nears an ROI boundary, the probability values for the 2 adjacent ROIs drop, allowing for the case that the \textit{background} label probability might actually be higher than each of the 2 ROI probabilities taken separately. The introduction of a \textit{background label handicap} requires that, in order for a voxel to be labelled as background, it needs to win the ``competition'' by, say 0.25, or 0.50, more than the next highest AAL label. The addition of this additional constraint produces labelling templates in which only the background labels \textit{might} be converted to an AAL label; voxels labelled as non-background (i.e. an AAL label) are \textit{never} modified by this process. The resulting labelling templates have ROIs that are tightly fitted together, with a broader spatial extent.  The increased spatial extent is extremely useful for labelling vertices in cortical surfaces, permitting us to ensure that no vertex remains unlabelled.
+
+
+\subsection{Subject-Level VBM Statistical Volumes}
+In previous versions of the Beagle pipeline, the mean and standard deviation (SD) volumes used in the subject-level VBM processing were derived from a group of 60 normal elderly control subjects recruited and scanned at the Chertkow lab. While these mean/SD volumes were able to produce good results, our experience with the AAL labels made it clear that using more subjects in the model produced more stable results.  As such, and given the availability of the 200 ADNI normal elderly control volumes, it was decided to recreate the mean/SD volumes using the 200 ADNI subjects.  Creation of the gray and white matter mean/SD volumes proceeded as follows:
+
+\begin{enumerate}
+  \item Fully tissue-classified (PVE-corrected) volumes which were generated by Civet were obtained from the pipeline output, were obtained for all 200 ADNI subjects.
+  \item Each volume was ``exploded'' into its component tissue types, producing 4 masks per subject (background, CSF, gray matter, white matter).
+  \item Gray and white matter masks were blurred using an 8-mm 3-dimensional Gaussian filter.
+  \item Mean and SD volumes were then created using the blurred gray and white matter volumes (separately).   
+\end{enumerate}
+
+
+
+\section{Automated Anatomical Labeling (AAL)}
+Both PiB and FDG analyses require the ability to quantify PiB uptake or relative degree of glucose metabolism by ROI. As such, we need to be able to transfer all of the AAL labels from the ldiAdni200 label volume onto each subject's brain in stereotactic space. The process proceeds as follows:
+\begin{enumerate}
+  \item Firstly, note that Civet requires that the subject's volume be strongly warped onto the ICBM symmetrical VI model using a nonlinear 4-mm grid. The warping is required for tissue classification, but we will use this nonlinear transformation file as well.
+  \item The \emph{inverse} of the above nonlinear transformation is applied to the ldiADni200 AAL label volume (50\% background handicap), having the effect of warping the labels into the subject's linearly transformed space.
+  \item We apply the subject's Civet-generated gray matter mask against the newly created AAL labels, providing us with both masked and unmasked AAL label volumes for the subject. Use of the mask is particularly important since the 50\% background handicap labelling volume is somewhat generous in its labelling; potentially labelling non-gray matter structures as gray matter. Application of the gray matter mask neatly trims off any excess.
+\end{enumerate}
+
+It is the masked volume that is subsequently used in the PiB and FDG quantification.
+
+
+
+\section{Voxel-Based Morphometry (VBM)}
+This analysis is comprised of two stages in which statistics are generated during the first stage, and then subsequently quantified during the second. 
+
+\subsection{Statistical Analysis}
+With the move from Civet 1.1.7 to 1.1.11, Civet provides us with pre-blurred tissue classified volumes. These volumes are blurred using an 8-mm 3D Gaussian blurring filter, the purpose of which is to blur individual-level anatomical detail, thus making it a better match to the ldiAdni200 average template. These blurred gray and white matter volumes are compared against the ldiAdni200 mean/SD volumes, permitting us to compute a z-score at each voxel.
+
+As a bit of an aside, it should be noted that some voxels need to have their z-scores algorithmically set to zero (0). The reason for this is a little obscure, but let me explain this via an example. So, say that we want to compute a gray matter z-score for a given voxel whose blurred value is 0.4. To do this, we go into the elderly model's $mean$ and $SD$ volumes and extract the mean and sd values at that voxel. Now note that \emph{if} the model's mean value is very low, say, 0.01, that would suggest that only 1 in 100 subjects (more or less) had gray matter at that voxel, and all of the rest of the subjects had no gray matter at that voxel. Most importantly, such a low proportion usually results in an extremely small $SD$ value, since most of the subjects would have had values near zero, and therefore, there would be little variance. When we compute a z-score with this tiny $SD$ value, we end up with an \emph{enormous} z-score, merely due to the microscopic $SD$ value in the model's $SD$ volume at that particular voxel. After fairly intensive investigation, we came to the conclusion that the best way to avoid tiny $SD$ values is by avoiding small $mean$ values within the elderly mean volume. So, it was decided that, if the $mean$ value within the elderly model volume is lower than, say, 0.1, then we're just going to set the voxel z-score to 0. Why? Well, a mean value of less than 0.1 suggests that fewer than 10\% of the subjects had gray matter at that voxel, and so any z-score is going to be heavily influenced by a very small $SD$. Yes, this sounds kind of arbitrary, but a line has got to be drawn somewhere.
+
+
+
+\subsection{Quantification of Results}
+The above described analysis produces both a gray and a white matter z-score volume. Both of these volumes could be loaded into a viewer and the results visualized, however, the results in this form are not particularly useful in a number of common situations. For example, many conventional statistical techniques are not well suited to analysis of over 7 million voxels presented as a 3-dimensional array. In addition, while images can have their place, one often needs the ability to briefly glance at a list of values and quickly comprehend the primary finding, without being required to run off to the lab and load the volume into a 3-D viewer. It is for these reasons that we decided that we needed to better quantify the z-scores generated in the previous stage of processing.
+
+The quantification of results is a reasonably straight-foward process by which voxels of interest are identified and then accumulated in one of a series of regions of interest (ROI). Given that we were primarily looking for evidence of atrophy, voxels of interest were defined as those for which the z-score was less than -2.33, which reflects a p-value of equal to or less than 0.01 (one-sided, uncorrected). ROIs were defined through the use of customized Automated Anatomical Labeling (AAL) labels, which were overlayed onto the z-score volumes; voxels of interest were counted and accumulated in the corresponding AAL region. 
+
+It should be noted that the AAL template used in this analysis is not quite the same as that used for the PiB and FDG analyses. Rather, the PiB/FDG analyses make use of a custom fit AAL template, in which the ldiAdni200 template used here undergoes an additional nonlinear warp in order to more precisely fit each individual subject's anatomy. Such a customized AAL template cannot be used in VBM quantification, since we need the template to fit the subjects much more loosely in order to be able to capture the voxels potentially lost to atrophy which might be located, for example, at the boundary of any given ROI; these voxels would not be counted by a tight fitting ROI template. Consequently, while the template used in this processing is the same as that used for PiB/FDG (i.e., the ldiAdni200 AAL label volume with a 50\% background handicap), it should be noted that for VBM quantification, \textit{label volume is not warped}.
+
+
+\section{Cortical Thickness Analysis (CTA)}
+\label{cta_methods}
+Cortical thickness values are produced by the Civet pipeline. It should be noted that although all processing occurs in stereotactic space, the cortical thickness values are obtained by sampling the native-space brain. As such, all thickness values reflect the subject's actual cortical thickness (in mm). This is not true for other pipelines in which the thickness values are obtained from the rescaled brain, yielding scaled thickness values.\footnote{This is a very bad thing because it introduces a confound into the processing. For example, women generally have smaller brains than men, so their brains need to be upscaled into stereotactic space, which results in an artifical increase in cortical thickness values. Studies that have encountered this problem will report, for example, that women have thicker cortex than men.}  Briefly, Civet generation of cortical thickness values proceeds according to the following processing stages:
+
+\begin{enumerate}
+  \item Tissue classification permits generation of both a gray and white matter surface for each subject.
+   \item Surfaces are aligned to a model surface.
+   \item The difference in distance between the aligned gray and white matter surfaces is computed at each of 81924 vertices (40962 per hemisphere) using the \emph{t-link} method, providing a measure (in mm) of cortical thickness at each of those vertices.
+   \item Thickness values are smoothed using a 20-mm surface smoothing filter.
+\end{enumerate}
+
+\subsection{Statistical Analysis}
+As is the case with the VBM analysis, we determine whether any given subject is abnormal by comparing their individual results against that of a normal control group. In this case, thickness values were generated for each of the subjects comprising the 200 ADNI normal elderly control group. Mean thickness and standard deviation values were subsequently computed for each of the 81924 vertices comprising the entire cortical surface. Individual subject thickness values were then comapred against the group mean and stdev values, producing a z-score at each vertex, to be rendered onto a surface for visualization and used in ROI quantification.
+
+
+\subsection{Quantification of Results}
+In order to permit analysis by region of interest (ROI), the 81924 generated z-scores needed to be transformed into approximately 122 ROIs. This was accomplished in two steps. In the first step, our customized AAL labels were strongly warped (non-linearly) onto the subject's surface, yielding an individually-labelled surface comprised of 81924 labels (one label at each vertex). The second step was comprised of matching the thickness vector file against the newly created labels vector file, permitting us to compute a number of statistics for each ROI. Given that we are primarily looking for evidence of atrophy, z-scores, both at the vertex and the ROI-level, are considered to be of interest if their value is less than $-2.33$, which reflects a p-value of equal to or less than 0.01 (one-sided, uncorrected).
+
+
+
+
+
+
+\section{PiB PET Imaging}
+\label{pib_methods}
+Subjects were scanned according to one of two protocols. In the first protocol, subjects were placed into the scanner, given the PiB bolus, and then scanned for a full 90 minutes, during which time 34 frames were collected. Since the PiB signal is much stronger immediately following bolus administration, frame durations are not of equal length, but rather, earlier frames are shorter, with frame durations increasing over the scanning session.  For protocol 1, the shortest frame duration was 15 seconds and the longest was 10 minutes. As we are more interested in PiB retention rather than the initial uptake, it is the later frames that are of greatest interest to us.
+
+The second protocol resulted from the need to shorten scanning times, as some of our elderly patients found a 90 minute scanning time to be too long. As such the second protocol implemented the following modifications:
+
+\begin{enumerate}
+  \item The PiB bolus was administered, but scanning was only initiated 50 minutes post-injection. Not capturing the early frames prevented automatic motion correction to compensate for inter-frame motion, but otherwise had no impact on the ratios.
+  \item Scanning resulted in the collection of 7 frames, with frame durations varying bwteen 5 and 10 minutes.
+
+\end{enumerate}
+
+Of note is that the 7 frames collected in 40 minutes of scan time under protocol 2, should provide equivalent signal to the last 40 minutes of scan time under protocol 1 (5 frames ).
+
+
+\subsection{PiB-Specific Preprocessing}
+\label{pib_preprocesing}
+The PiB volume was first aligned to the subject's native anatomy (a T1 scan) using a 6-parameter, rigid-body fit.  This was then followed by registration of both native-space volumes to the MNI symmetrical template, using a 12-parameter linear transformation.  The resultant stereotactic-space dynamic volume was then blurred with a 6-mmm full-width at half-maximum Gaussian filter in order to increase signal-to-noise, and minimize the effects of random high-frequency spikes in the data.  Blurring filter width was minimized in order to prevent the blurring of the signal within the cerebellar gray and white matter.  Such over-blurring would contaminate the signal within the cerebellar gray with the much higher signal found within the cerebellar white, thus serving to depress the overall PiB ratio values.\footnote{It should be noted that researchers utilizing the entire cerebellum (gray and white matter) will likely obtain much higher cerebellar gray reference values, which will depress their ratios.  Thus, the commonly used ratio cut-off value of 1.5 is likely to be \emph{too low} for our ratios.  In other words, if we set our theshold to 1.5, we will probably see a lot more PiB than other reseachers have found.  In reality, we should probably determine our threshold empirically, perhaps, by plotting the distributions of various ratios, and noting which appears to do the best job of separating our normal controls from the AD subjects.  We need to think about this a bit more.}
+
+Cerebellar masks, which were created by the MNI pipeline, were then used in order to provide us with a measure of PiB uptake in the cerebellar gray matter.  Specifically, the pipeline's tissue classification stage produces both white and gray matter masks for each subject.  The gray matter mask was then logically combined with a cerebellar mask, to produce a cerebellar gray matter mask for each subject.  Cerebellar gray matter reference values were then obtained at each frame (time point) in the dynamic volume, by averaging the intensity values of those voxels that fell within the cerebellar gray matter mask.
+
+
+
+
+
+\subsection{PiB Ratios Computation}
+Ratio values, which were computed using all 7 frames under protocol 2, and the last 5 frames under protocol 1 (50 minutes post-injection; 40 minute total scan time), were computed at each voxel by a two-stage process.  First, the area under the curve (AUC) across time was computed for the cerebellar gray matter reference values, and at each voxel within the volume. Ratios were then computed by dividing each voxel's AUC value by the cerebellar gray AUC. Thus, a ratio value of 1.00 can be said to reflect the cerebellar gray with regard to the time-course of PiB retention;  values greater than 1.00 are indicative of areas that retain PiB more than the cerebellar reference.  A convenience cut-off of 1.5 is commonly used, however, this value is strongly influenced by the method by which the cerebellar gray matter reference values are computed.
+
+\subsection{SUVR Computation}
+\label{pib_suvr_computation}
+The primary purpose of the SUVR metric to to privide a single value whose purpose is to reflect global PiB load in a given subject.  We accomplish this in a 2-stage process. Firstly, average PiB ratio values are computed for each region of interest (ROI) as defined by a given laballing template. We are currently using the AAL template, and as such, an average ratio value is computed for each of the AAL template's ROIs. Simply averaging these ROI-averaged ratios, would provide us with a single SUVR-like number, however, this number would be biased in favour of smaller ROIs. So in the second stage, the ROI-averaged ratios are used to compute a weighted global value, in which the weight of each ROIs average value is determined by it's volume relative to the total volume. It is this weighted global ratio that we term the SUVR.
+
+
+
+
+\section{FDG PET Imaging}
+\label{fdg_methods}
+
+\subsection{FDG Data Acquisition}
+\label{fdg_acquisition}
+
+All FDG data were primarily acquired at two sites: the Jewish General Hospital (JGH) and the Centre Hospitalier de l'Universite de Montreal (CHUM). 
+
+
+Common details:
+\begin{enumerate}
+  \item radioisotope: 18F, fluorodeoxyglucose, half-life 6588 sec = 109.8 min
+  \item fasting prior to scan?
+\end{enumerate}
+
+JGH protocol:
+\begin{enumerate}
+  \item scan duration: 1,200,000 ms? 20 minutes
+  \item scanner: GE Medical Systems Discovery ST, in 3D acquisition mode
+  \item plane acquired: 47 3.27-mm axial slices
+  \item xyz resolution: 128 x 128 x 47 @ 2.34, 2.34, 3.27 mm 
+  \item rescale slope: variable (e.g., 1.38, 0.89, etc)
+  \item decay factor: 1.06446
+  \item reconstruction filter type/width:
+\end{enumerate}
+
+CHUM protocol:
+\begin{enumerate}
+  \item time from bolus injection to scan: 40 minutes
+  \item scan duration: 937,999 ms? 15.6 minutes
+  \item scanner: Philips Medical Systems Guarian Body (C)
+  \item plane acquired: 67 3.00-mm axial slices
+  \item xyz resolution: 128 x 128 x 90 @ 2.00, 2.00, 2.00 mm
+  \item rescale slope: ?1.0?
+  \item decay factor: ?1.00?
+  \item reconstruction filter type/width: 300?
+\end{enumerate}
+
+
+
+
+\subsection{FDG-Specific Preprocessing}
+\label{fdg_preprocesing}
+The FDG volume was first aligned to the subject's native anatomy (a T1 scan) using a 6-parameter, rigid-body fit.  This was then followed by application of a small global rescaling factor in order to remove partial volume effects at the cortical surface. The next step required the registration of both native-space volumes to the MNI symmetrical template, using a 12-parameter linear transformation.  The resultant stereotactic-space dynamic volume was then blurred with a 6-mmm full-width at half-maximum Gaussian filter in order to increase signal-to-noise, and minimize the effects of random high-frequency spikes in the data.
+
+Cerebellar masks, which were created by the MNI pipeline, were then used in order to provide us with a measure of FDG uptake within the cerebellar gray matter.  Specifically, the pipeline's tissue classification stage produces both white and gray matter masks for each subject.  The gray matter mask was then logically combined with a cerebellar mask, to produce a cerebellar gray matter mask for each subject.  Cerebellar gray matter reference values were then obtained in the dynamic volume by averaging the intensity values of those voxels that fell within the cerebellar gray matter mask.
+
+\subsection{FDG Ratios Computation}
+Ratios were then computed by dividing the intensity value at each voxel of the dynamic volume with that obtained within the cerebellar gray. The cerebellar gray was used as a reference tissue for 2 primary reasons: (1) Alzheimer's disease \emph{usually} does not directly impact the cerebellum in early to mid-stage AD, thus increasing the likelihood that of sampling relatively healthy tissue, and (2) the relatively large volume of tissue that comprises the cerebellar gray should provide us with relatively stable estimates (unlike the pons, a much smaller structure). Thus, a ratio value of 1.00 can be said to reflect the cerebellar gray (the reference tissue) with regard to FDG uptake; areas with ratios less than 1.00 indicate less FDG uptake (relative to the cerebellum), whereas ratios greater than 1.00 show areas with a greater degree of FDG uptake.
+
+
+\paragraph{Visualization of Ratios} For the purposes of visualization, ratios less than 0.80 are deemed to be ``of interest''; ratios above this threshold are not shown. The current cut-off (0.80) is somewhat arbitrary, and may be revised in the future, when we have a better understanding with regard to the normal variability of FDG uptake in different regions and types of tissue. Furthermore, in order to better facilitate visualization using a hot or spectral color map in which larger magnitude values map to hotter colors, ratios needed to be transformed prior to rendering. Specifically, ratios where transformed to reflect the \textit{percentage decreases in FDG signal relative to the reference tissue}. So, for example, a ratio of 0.80 is transformed to a 20\% signal decrease, and a ratio of 0.50 is transformed into a 50\% signal decrease. The upper bound on this transformed scale is 100\%, as this would indicate no signal at all; the lower bound is arbitary, although we have decided to show regions with more than a 20\% decrease relative to reference.
+
+
+
+
+
+\subsection{SUVR Computation}
+\label{fdg_suvr_computation}
+The primary purpose of the SUVR metric to to privide a single value whose purpose is to reflect global FDG uptake in a given subject.  The actual computation is precisely the same as for PiB processing. See 
+section~\ref{pib_suvr_computation} for more information.
+
+
+
+

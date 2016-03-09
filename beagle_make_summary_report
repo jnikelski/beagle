@@ -1,0 +1,398 @@
+#!/usr/bin/env ruby
+# ==============================================================================
+# PURPOSE:
+#    This script is supposed to be executed by it's driver, to produce
+#      multi-modal imaging reports.
+#
+# ==============================================================================
+
+require 'optparse'
+require 'ostruct'
+require 'pathname'
+require 'fileutils'
+require 'tmpdir'            # needed for Dir::tmpdir
+
+# load ruby gems
+require 'rubygems'
+require 'json'
+require 'pp'
+
+# load external dependencies
+require 'hclab_function_library'
+require 'beagle_function_library'
+require 'beagle_logger_classes'
+
+
+# select the modality subdirectories which we want to include in the report
+def do_select_subdirs(targetDir_fullPath, debug)
+
+   puts sprintf("Selecting Reporting Modalities from Directory: %s\n", targetDir_fullPath) if debug
+   
+   # set allowable modality types/labels
+   # ... these form the first part of the subdir name
+   # ... order them according to how you want to see them in the report
+   modalities = ["AAL", "VBM", "THICKNESS", "PiB", "FDG"]
+   
+   # put selected subdir names in here
+   selected = Array.new
+   
+   # loop over all items in the given directory
+   Dir.foreach(targetDir_fullPath) {|subdir|
+
+      # skip over ./.. directory entries
+      if ( !File.fnmatch?('*', subdir) ) then next end
+
+      # only process if it's a directory
+      subdir_fullPath = File.join(targetDir_fullPath, subdir)
+      if ( !File.directory?(subdir_fullPath) ) then next end
+
+      # all valid subdirectories have 2-part, hyphenated names
+      # ... split the name
+      subdir_parts = subdir.split('-')
+      # ... gotta have 2 parts, with '-' separator
+      if ( subdir_parts.length != 2 )  then next end
+      # ... store the parts names
+      analysis = subdir_parts[0]
+      scan_date = subdir_parts[1]
+      
+      # is this subdir one of the chosen ones?
+      if ( modalities.include? analysis ) then selected.push(subdir) end
+
+   }
+   
+   # reorder to reflect desired report order
+   selected.sort!
+   aal_items = selected.grep(/^AAL/)
+   vbm_items = selected.grep(/^VBM/)
+   thickness_items = selected.grep(/^THICKNESS/)
+   pib_items = selected.grep(/^PiB/)
+   fdg_items = selected.grep(/^FDG/)
+   #
+   selected = aal_items +vbm_items +thickness_items +pib_items +fdg_items
+   
+   # done. Go away/back.
+   return selected
+end
+
+
+# perform Sweave processing for a particular chapter/analysis
+def do_sweave(analysis_type, scan_date, template, chapter_number, settings, opt, wrkdir)
+
+   if ( 1 == 0 ) then
+      puts sprintf("Debug: do_sweave: analysis_type = %s", analysis_type)
+      puts sprintf("Debug: do_sweave: scan_date = %s", scan_date)
+      puts sprintf("Debug: do_sweave: template = %s", template)
+      puts sprintf("Debug: do_sweave: chapter_number = %s", chapter_number)
+      puts sprintf("Debug: do_sweave: settings ...")
+      pp settings
+      puts sprintf("Debug: do_sweave: opt ...")
+      puts opt
+      puts sprintf("Debug: do_sweave: wrkdir = %s", wrkdir)
+   end
+
+
+   puts sprintf("Processing chapter for %s analysis", analysis_type) if opt.verbose
+   #
+   # copy the appropriate .Rnw file to tmp, using a unique filename
+   # ... copy to here 
+   rnw_filename = "chapter_#{chapter_number}.Rnw"
+   rnw_filename_fullPath = File.join(wrkdir, rnw_filename)
+   # ... copy from here
+   template_filename_fullpath = File.join(settings['LORIS_RESOURCE_DIR'], settings[template])
+   FileUtils.cp(template_filename_fullpath, rnw_filename_fullPath, :verbose => true)
+
+   # write arguments needed by Sweave to a file for source'ing by R
+   args_filename = "args_file.txt"
+   args_filename_fullPath = File.join(wrkdir, args_filename)
+   args_file = File.new(args_filename_fullPath, "w")
+
+   args_file.puts sprintf(%|keyname = "#{opt.keyname}"|)
+   args_file.puts sprintf(%|rootDir = "#{settings['LORIS_ROOT_DIR']}"|)
+   args_file.puts sprintf(%|analysis_type = "#{analysis_type}"|)
+   args_file.puts sprintf(%|scan_date = "#{scan_date}"|)
+   args_file.puts sprintf(%|settings_filename = "#{opt.settingsFile}"|)
+   args_file.close()
+
+   # run Sweave using the tmp .Rnw
+   cmd = "R CMD Sweave   #{rnw_filename_fullPath}"
+   do_cmd(cmd, opt.verbose, opt.fake)
+end
+
+# start of main script
+begin
+   opt                     = OpenStruct.new{}  # store input options
+   opt.verbose             = false
+   opt.debug               = false
+   opt.fake                = false
+   #
+   opt.keyname             = ""        # subject keyname
+   opt.settingsFile        = ""
+
+   # List of arguments.
+   opts = OptionParser.new do |opts|
+      opts.banner = "Usage: #{$0} [Options]"
+      opts.separator ""
+      opts.separator "Options:"
+
+      opts.on('-v', '--[no-]verbose', 'Run verbosely') { |v| opt.verbose = v }
+
+      opts.on('-d', '--debug', 'Print pedantic debugging messages') { |d| opt.debug = d }
+
+      opts.on('-f', '--fake', 'Do not actually execute the commands') { |f| opt.fake = f }
+
+      opts.on('--keyname subject_keyname', "subject keyname (e.g., trinity)") do |keyname|
+         opt.keyname = keyname.to_s
+         puts "** subject keyname: " + opt.keyname if opt.verbose
+      end
+
+      opts.on('--settingsFile aggregated_settings_file', "Fullpath to the aggregated settings file ") do |settingsFile|
+         opt.settingsFile = settingsFile.to_s
+         puts "** Fullpath to the aggregated settings file: " + opt.settingsFile if opt.verbose
+      end
+
+      opts.on_tail("-h", "--help", "Show this very helpful help message") do
+         puts opts
+         exit
+      end
+
+   end  # OptionParser
+
+   # run parse!() method in the OptionParser object, passing ARGV
+   # NB: the "!" in parse!() removes the switches from ARGV
+   puts "Before OptionParser start ..." if opt.debug
+   begin
+      opts.parse!(ARGV)
+   rescue Exception => e
+      puts e, "", opts
+      exit
+   end
+
+
+   # = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
+   #
+   #
+
+   # check for aggregated settings file, then read if all looks OK
+   if ( opt.settingsFile.empty? ) then
+      puts "\n*** Error: Missing option(s) -- Loris aggregated settings file"
+      puts opts
+      exit
+   end
+   #
+   if ( !File.exists?(opt.settingsFile) || !File.file?(opt.settingsFile) ) then
+      puts sprintf("\n!!! Error: The specified Loris aggregated settings [%s] does not exist or is unreadable.", opt.settingsFile)
+      exit
+   end
+   #
+   settings = load_loris_aggregated_settings(opt.settingsFile, verbose=false, debug=false)
+
+
+   # init associated variables
+   LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
+   LORIS_RESOURCE_DIR = settings['LORIS_RESOURCE_DIR']
+   CIVET_VERSION = settings['CIVET_VERSION']
+   CIVET_ROOT_DIR = settings['CIVET_ROOT_DIR']
+
+   # set some useful values
+   keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
+   keynameLogs_dir_fullPath = File.join(keyname_dir_fullPath, 'logs')
+   keynameTmp_dir_fullPath = File.join(keyname_dir_fullPath, 'tmp')
+
+
+
+   # * * * * *  START of input argument validation   * * * * *
+   #
+   # keyname has been entered?
+   if ( opt.keyname.empty? ) then
+      puts "\n*** Error: Subject keyname is missing ... we really need this."
+      puts opts
+      exit
+   end
+   
+   # check if the temporary working directory exists; if not, create it
+   # Note: if often clear out the tmp dir at end of processing by 
+   #       deleting it -- that's why we need to re-create it
+   if !File.exists?(keynameTmp_dir_fullPath) then Dir.mkdir(keynameTmp_dir_fullPath) end
+   #
+   # * * * * *  END of input argument validation   * * * * * * * *
+   # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+
+
+   # load subject's master logfile; write a start message
+   progname = 'beagle_make_summary_report'
+   logger = BeagleLogger.new(opt.keyname, settings, eraseLog=false)
+   logger.log_start_message(progname, opt.keyname, 'REPORT', 'NULL')
+   logger.log_message(progname, opt.keyname, 'REPORT', 'NULL', 'civet_version', CIVET_VERSION)
+
+
+   # now that we've verified that we have a /logs subdir,
+   # ... set processing status to "running"
+   set_job_status(keynameLogs_dir_fullPath, "beagle_make_summary_report_JobStatus", "running")
+
+
+
+   # Note: Sweave does *not* permit specification of an output directory.
+   #       Sweave simply spits its output into the current working directory.
+   #       Sooo, most of the time, we shall be sitting in the working directory.
+   #
+   # temp directory is used to assemble all of the .tex bits and pieces
+   #
+   # save away current dir, and change to tmp
+   orig_dir = Dir.getwd()
+   Dir.chdir(keynameTmp_dir_fullPath)
+   puts sprintf("Debug: Just changed directories: %s --> %s", orig_dir, keynameTmp_dir_fullPath) if opt.debug
+
+   # open a new file to contain the newly generated '\input' statements for
+   # each chapter
+   chapter_filename = "list_of_chapters.tex"
+   chapter_filename_fullPath = File.join(keynameTmp_dir_fullPath, chapter_filename)
+   chapter_file = File.new(chapter_filename_fullPath, "w")
+   chapter_number = 0
+
+   # add '\input' statement for the Introduction chapter
+   chapter_number = chapter_number +1
+   RNW_TEMPLATE_INTRO = settings['RNW_TEMPLATE_INTRO']
+   puts "Introduction Sweave template filename: #{RNW_TEMPLATE_INTRO}" if opt.debug
+   # perform Sweave processing
+   do_sweave('INTRO', 'dummy', 'RNW_TEMPLATE_INTRO', chapter_number, settings, opt, keynameTmp_dir_fullPath)
+   # write an '\input' line to the chapters file
+   chapter_file.puts sprintf("\\input\{chapter_#{chapter_number}.tex\}")
+
+   
+   # add '\input' statement for the Methods chapter
+   chapter_number = chapter_number +1
+   RNW_TEMPLATE_METHODS = settings['RNW_TEMPLATE_METHODS']
+   puts "Methods Sweave template filename: #{RNW_TEMPLATE_METHODS}" if opt.debug
+   # perform Sweave processing
+   do_sweave('METHODS', 'dummy', 'RNW_TEMPLATE_METHODS', chapter_number, settings, opt, keynameTmp_dir_fullPath)
+   # write an '\input' line to the chapters file
+   chapter_file.puts sprintf("\\input\{chapter_#{chapter_number}.tex\}")
+
+
+   # scan all of this subject's subdirectories and see what needs
+   #  ... to have documentation produced
+   selected = do_select_subdirs(keyname_dir_fullPath, opt.debug)
+
+
+   # loop over each selected subdir, and do the actual processing
+   selected.each {|subdir|
+
+      # split the subdir name, and then store the parts
+      subdir_parts = subdir.split('-')
+      analysis = subdir_parts[0]
+      scan_date = subdir_parts[1]
+      
+      #
+      puts sprintf("Processing -- Analysis type: %s     Scan date: %s",analysis,scan_date) if opt.debug
+
+      # increment the chapter number
+      # ... this is used to create unique .Rnw/.tex filenames
+      chapter_number = chapter_number +1
+
+
+      # run Sweave for each analysis type
+      case analysis
+      when 'VBM'
+         RNW_TEMPLATE_VBM = settings['RNW_TEMPLATE_VBM']
+         puts "VBM Sweave template filename: #{RNW_TEMPLATE_VBM}" if opt.debug
+         # perform Sweave processing
+         do_sweave(analysis, scan_date, 'RNW_TEMPLATE_VBM', chapter_number, settings, opt, keynameTmp_dir_fullPath)
+         # write an '\input' line to the chapters file
+         chapter_file.puts sprintf("\\input\{chapter_#{chapter_number}.tex\}")
+
+      when 'PiB'
+         RNW_TEMPLATE_PIB = settings['RNW_TEMPLATE_PIB']
+         puts "PiB Sweave template filename: #{RNW_TEMPLATE_PIB}" if opt.debug
+         # perform Sweave processing
+         do_sweave(analysis, scan_date, 'RNW_TEMPLATE_PIB', chapter_number, settings, opt, keynameTmp_dir_fullPath)
+         # write an '\input' line to the chapters file
+         chapter_file.puts sprintf("\\input\{chapter_#{chapter_number}.tex\}")
+
+      when 'FDG'
+         RNW_TEMPLATE_FDG = settings['RNW_TEMPLATE_FDG']
+         puts "FDG Sweave template filename: #{RNW_TEMPLATE_FDG}" if opt.debug
+         # perform Sweave processing
+         do_sweave(analysis, scan_date, 'RNW_TEMPLATE_FDG', chapter_number, settings, opt, keynameTmp_dir_fullPath)
+         # write an '\input' line to the chapters file
+         chapter_file.puts sprintf("\\input\{chapter_#{chapter_number}.tex\}")
+
+      when 'AAL'
+         RNW_TEMPLATE_LABELS = settings['RNW_TEMPLATE_LABELS']
+         puts "AAL Sweave template filename: #{RNW_TEMPLATE_LABELS}" if opt.debug
+         # perform Sweave processing
+         do_sweave(analysis, scan_date, 'RNW_TEMPLATE_LABELS', chapter_number, settings, opt, keynameTmp_dir_fullPath)
+         # write an '\input' line to the chapters file
+         chapter_file.puts sprintf("\\input\{chapter_#{chapter_number}.tex\}")
+
+      when 'THICKNESS'
+         RNW_TEMPLATE_THICKNESS = settings['RNW_TEMPLATE_THICKNESS']
+         puts "Cortical thickness Sweave template filename: #{RNW_TEMPLATE_THICKNESS}" if opt.debug
+         # perform Sweave processing
+         do_sweave(analysis, scan_date, 'RNW_TEMPLATE_THICKNESS', chapter_number, settings, opt, keynameTmp_dir_fullPath)
+         # write an '\input' line to the chapters file
+         chapter_file.puts sprintf("\\input\{chapter_#{chapter_number}.tex\}")
+      else
+         puts sprintf("\n*** Error: Specified modality type [%s] is not valid", analysis)
+         exit
+
+      end
+   }
+
+   # close the chapter file that we just created
+   chapter_file.close()
+
+   # now that each of the chapters have been generated, we can
+   # finally use the chapter file to generate the complete report
+   puts sprintf("Creating full subject report for subject %s", opt.keyname)
+
+   # set the root filename for the output
+   generated_filename_root = opt.keyname + '_summary_report_run-' + settings['LORIS_RUN_IDENTIFIER']
+
+   # first copy the appropriate .Rnw file to tmp, using a unique filename
+   # ... copy to here
+   rnw_filename = generated_filename_root + '.Rnw'
+   rnw_filename_fullPath = File.join(keynameTmp_dir_fullPath, rnw_filename)
+   # ... copy from here
+   template_filename_fullpath = File.join(settings['LORIS_RESOURCE_DIR'], settings['RNW_TEMPLATE_SUBJECT_REPORT'])
+   FileUtils.cp(template_filename_fullpath, rnw_filename_fullPath, :verbose => true)
+   #
+   cmd = "R CMD Sweave  #{rnw_filename_fullPath} "
+   do_cmd(cmd, opt.verbose, opt.fake)
+
+   # run pdflatex a couple of times (for good measure) in order to
+   # convert the .tex file to a .pdf file
+   tex_filename = generated_filename_root + '.tex'
+   cmd = "pdflatex  #{tex_filename} "
+   do_cmd(cmd, opt.verbose, opt.fake)
+   # ... and again
+   cmd = "pdflatex  #{tex_filename} "
+   do_cmd(cmd, opt.verbose, opt.fake)
+
+   # copy the newly minted pdf file to the subject root directory
+   pdf_filename = generated_filename_root + '.pdf'
+   FileUtils.cp(pdf_filename, keyname_dir_fullPath, :verbose => true) if !opt.fake
+
+   # restore to original directory
+   Dir.chdir(orig_dir)
+   puts sprintf("Debug: Just changed directories back: %s --> %s", keynameTmp_dir_fullPath, orig_dir) if opt.debug
+
+   # remove the tmp dir
+   #FileUtils.rm_rf(tmpdir)
+
+   # set job status to done
+   set_job_status(keynameLogs_dir_fullPath, "beagle_make_summary_report_JobStatus", "finished")
+
+   # log a 'done' message to the subject's master logfile, and then write out logfile
+   logger.log_stop_message(progname, opt.keyname, 'REPORT', 'NULL')
+   logger.save_to_file()
+
+rescue RuntimeError => e
+   STDERR.puts e
+   exit 1
+end  #main()
+
+
+
+
+
+

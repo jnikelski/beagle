@@ -1,0 +1,126 @@
+#!/usr/bin/env ruby
+# ==============================================================================
+# Purpose:
+#     This is the first script in the Loris pipeline.  Its purpose is to
+#  set up all output directories, and initialize them with a smattering
+#  of required files.
+#
+# ==============================================================================
+
+require 'optparse'
+require 'ostruct'
+require 'pathname'
+require 'fileutils'
+require 'tmpdir'            # needed for Dir::tmpdir
+
+# load ruby gems
+require 'rubygems'
+require 'json'
+require 'pp'
+
+# these libs are pointed to by the RUBYLIB env variable
+require 'hclab_function_library'
+require 'beagle_function_library'
+require 'beagle_logger_classes'
+
+
+# start of main script
+begin
+   opt                     = OpenStruct.new{}   # store input options
+   opt.verbose             = false
+   opt.debug               = false
+   opt.eraseLog            = false
+   opt.keyname             = ""
+   opt.settingsFile        = ""
+
+   # List of arguments.
+   opts = OptionParser.new do |opts|
+      opts.banner = "Usage: #{$0} [Options]"
+      opts.separator ""
+      opts.separator "Options:"
+
+      opts.on('-v', '--[no-]verbose', 'Run verbosely') { |v| opt.verbose = v }
+
+      opts.on('-d', '--debug', 'Print pedantic debugging messages') { |d| opt.debug = d }
+   
+      opts.on('--eraseLog', 'Erase the subjects log file') { |l| opt.eraseLog = l }
+      
+      opts.on('--keyname subject_keyname', "Anonymizing keyname for this subject") do |keyname|
+         opt.keyname = keyname
+         puts "** keyname: " + opt.keyname if opt.verbose
+      end
+
+      opts.on('--settingsFile aggregated_settings_file', "Fullpath to the aggregated settings file ") do |settingsFile|
+         opt.settingsFile = settingsFile.to_s
+         puts "** Fullpath to the aggregated settings file: " + opt.settingsFile if opt.verbose
+      end
+
+      opts.on_tail("-h", "--help", "Show this very helpful help message") do
+         puts opts
+         exit
+      end
+
+   end  # OptionParser
+
+   # run parse!() method in the OptionParser object, passing ARGV
+   # NB: the "!" in parse!() removes the switches from ARGV
+   puts "Before OptionParser start ..." if opt.debug
+   begin
+      opts.parse!(ARGV)
+   rescue Exception => e
+      puts e, "", opts
+      exit
+   end
+
+
+
+   # = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
+   #
+
+   # check for aggregated settings file, then read if all looks OK
+   if ( opt.settingsFile.empty? || opt.settingsFile.empty? ) then
+      puts "\n*** Error: Missing option(s) -- keyname or Loris aggregated settings file"
+      puts opts
+      exit
+   end
+   #
+   if ( !File.exists?(opt.settingsFile) || !File.file?(opt.settingsFile) ) then
+      puts sprintf("\n!!! Error: The specified Loris aggregated settings [%s] does not exist or is unreadable.", opt.settingsFile)
+      exit
+   end
+   #
+   settings = load_loris_aggregated_settings(opt.settingsFile, verbose=false, debug=false)
+
+
+
+   # init associated variables
+   LORIS_LOGFILE_SUFFIX = settings['LORIS_LOGFILE_SUFFIX']
+   LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
+
+   LORIS_LOGFILE_PREFIX = settings['LORIS_LOGFILE_PREFIX']
+   LORIS_LOGFILE_EXTENSION = settings['LORIS_LOGFILE_EXTENSION']
+   LORIS_RUN_IDENTIFIER = settings['LORIS_RUN_IDENTIFIER']
+
+   # set some useful values
+   keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
+
+
+   # Create a few subject-common directories
+   #
+   #
+   # 
+   filename = File.join(keyname_dir_fullPath, "tmp")
+   if !File.exists?( filename ) then FileUtils.mkdir( filename ) end
+
+
+   # create an empty logfile (unless asked not to) and log init message
+   logger = BeagleLogger.new(opt.keyname, settings, eraseLog=true)
+   logger.log_message('beagle_run_initialization', opt.keyname, 'NULL', 'NULL', 'init_message', 'Log file initialized')
+   logger.save_to_file()
+
+
+rescue RuntimeError => e
+   STDERR.puts e
+   exit 1
+end  #main()
+

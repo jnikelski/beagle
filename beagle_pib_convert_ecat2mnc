@@ -1,0 +1,218 @@
+#!/usr/bin/env ruby
+# ==============================================================================
+# Purpose:
+#     Convert PiB ecat file to minc.
+#
+# ==============================================================================
+
+require 'optparse'
+require 'ostruct'
+require 'pathname'
+require 'fileutils'
+require 'tmpdir'            # needed for Dir::tmpdir
+
+# load ruby gems
+require 'rubygems'
+require 'json'
+require 'pp'
+
+# load external dependencies
+require 'hclab_function_library'
+require 'beagle_function_library'
+require 'beagle_logger_classes'
+
+# start of main script
+begin
+   opt                     = OpenStruct.new{}  # store input options
+   opt.verbose             = false
+   opt.debug               = false
+   opt.fake                = false
+   opt.keyname             = ""
+   opt.scanDate            = ""
+   opt.scanId              = ""                 # this is a derived value
+   opt.civetScanId         = ""
+   opt.settingsFile        = ""
+
+   # List of arguments.
+   opts = OptionParser.new do |opts|
+      opts.banner = "Usage: #{$0} [Options]   PiB_volume_in.v"
+      opts.separator ""
+      opts.separator "Options:"
+
+      opts.on('-v', '--[no-]verbose', 'Run verbosely') { |v| opt.verbose = v }
+
+      opts.on('-d', '--debug', 'Print pedantic debugging messages') { |d| opt.debug = d }
+
+      opts.on('-f', '--fake', 'Do not actually execute the commands') { |f| opt.fake = f }
+
+      opts.on('--keyname subject_keyname', "Anonymizing keyname for this subject") do |keyname|
+         opt.keyname = keyname
+         puts "** keyname: " + opt.keyname if opt.verbose
+      end
+
+      opts.on('--scanDate scan_date', "Format YYYYMMDD") do |scanDate|
+         opt.scanDate = scanDate
+         puts "** scan date: " + opt.scanDate if opt.verbose
+      end
+
+      opts.on('--civetScanId civet_scan_id', "Format keyname-scanDate") do |civetScanId|
+         opt.civetScanId = civetScanId
+         puts "** Civet scan Id: " + opt.civetScanId if opt.verbose
+      end
+
+      opts.on('--settingsFile aggregated_settings_file', "Fullpath to the aggregated settings file ") do |settingsFile|
+         opt.settingsFile = settingsFile.to_s
+         puts "** Fullpath to the aggregated settings file: " + opt.settingsFile if opt.verbose
+      end
+
+      opts.on_tail("-h", "--help", "Show this very helpful help message") do
+         puts opts
+         exit
+      end
+   end  #OptionParser
+
+  # run parse!() method in the OptionParser object, passing ARGV
+  # NB: the "!" in parse!() removes the switches from ARGV
+  puts "Before OptionParser start ..." if opt.debug
+  begin
+    opts.parse!(ARGV)
+  rescue Exception => e
+    puts e, "", opts
+    exit
+  end
+
+
+
+   # = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
+   #
+
+   # check for aggregated settings file, then read if all looks OK
+   if ( opt.settingsFile.empty? ) then
+      puts "\n*** Error: Missing option(s) -- Loris aggregated settings file"
+      puts opts
+      exit
+   end
+   #
+   if ( !File.exists?(opt.settingsFile) || !File.file?(opt.settingsFile) ) then
+      puts sprintf("\n!!! Error: The specified Loris aggregated settings [%s] does not exist or is unreadable.", opt.settingsFile)
+      exit
+   end
+   #
+   settings = load_loris_aggregated_settings(opt.settingsFile, verbose=false, debug=false)
+
+
+   # init associated variables
+   LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
+   CIVET_VERSION = settings['CIVET_VERSION']
+   CIVET_ROOT_DIR = settings['CIVET_ROOT_DIR']
+
+
+   # set some useful values
+   opt.scanId = opt.keyname + '-' + opt.scanDate
+   keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
+   #
+   pib_dir = 'PiB-' + opt.scanDate
+   pib_dir_fullPath = File.join(keyname_dir_fullPath, pib_dir)
+   pibTmp_dir_fullPath = File.join(pib_dir_fullPath, 'tmp')
+   pibLogs_dir_fullPath = File.join(pib_dir_fullPath, 'logs')
+   pibNative_dir_fullPath = File.join(pib_dir_fullPath, 'native')
+
+
+
+
+   # * * * * *  START of input argument validation   * * * * *
+   #
+   # keyname has been entered?
+   if ( opt.keyname.empty? or opt.scanDate.empty? ) then
+      puts "\n*** Error: Subject keyname OR PiB scan date is missing"
+      puts opts
+      exit
+   end
+
+   # make sure that the input args were specified and are valid
+   pib_vol_in = ARGV[0]
+
+   puts "Input PiB volume is: #{pib_vol_in}" if opt.debug
+   if ( pib_vol_in.nil? ) then
+      puts "\n!!! Please specify the fullpath to the PiB input file"
+      puts opts
+      exit
+   end
+
+   # input volume is ecat, yes?
+   pib_vol_basename = File.basename(pib_vol_in)
+   pib_vol_extname = File.extname(pib_vol_basename)
+   if (pib_vol_extname != '.v') then
+      puts "\n!!! Ummm ... I believe the argument must be an Ecat (.v) file. Yes?"
+      puts opts
+      exit
+   end
+
+   # check if the temporary working directory exists; if not, create it
+   # Note: if often clear out the tmp dir at end of processing by 
+   #       deleting it -- that's why we need to re-create it
+   if !File.exists?(pibTmp_dir_fullPath) then Dir.mkdir(pibTmp_dir_fullPath) end
+   #
+   # * * * * *  END of input argument validation   * * * * * * * *
+   # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+
+
+   # load subject's master logfile; write a start message
+   progname = 'beagle_pib_convert_ecat2mnc'
+   logger = BeagleLogger.new(opt.keyname, settings, eraseLog=false)
+   logger.log_start_message(progname, opt.keyname, 'PiB', opt.scanDate)
+   logger.log_message(progname, opt.keyname, 'PiB', opt.scanDate, 'civet_version', CIVET_VERSION)
+
+
+   # now that we've verified that we have a /logs subdir,
+   # ... set processing status to "running"
+   set_job_status(pibLogs_dir_fullPath, "beagle_pib_convert_ecat2mnc_JobStatus", "running")
+
+
+
+   #
+   # Step 1: ecat to minc conversion  (write minc1 volume, due to a bug in ecattominc)
+   ENV['MINC_FORCE_V2'] = '0'
+   puts "\n** Copy input Ecat file to \"native\" sub-directory ..."   if opt.verbose
+
+   # delete first ... note that ecat files are read-only
+   delfile = File.join(pibNative_dir_fullPath, File.basename(pib_vol_in))
+   puts "... deleting  read-only Ecat file: " + delfile
+   FileUtils.rm_rf(delfile)
+
+   # ... and now copy
+   FileUtils.copy(pib_vol_in, pibNative_dir_fullPath)
+   puts "\n** Convert Ecat file to minc ..."   if opt.verbose
+   cmd = "beagle_pib_ecat_to_minc -v   "
+   cmd << "--clobber "
+   cmd << "#{pib_vol_in}  "
+   cmd << "#{pibNative_dir_fullPath}/converted.mnc "
+   do_cmd(cmd, opt.verbose, opt.fake)
+
+   #
+   # Step 1b: anonymize the volume, inserting the new keyname
+   puts "\n** Anonymizing PiB volume ..."   if opt.verbose
+   cmd = "mincDeIdentify -v   "
+   cmd << "--clobber "
+   cmd << "--name=#{opt.keyname} "
+   cmd << "#{pibNative_dir_fullPath}/converted.mnc   "
+   cmd << "#{pibNative_dir_fullPath}/#{opt.keyname}.mnc "
+   do_cmd(cmd, opt.verbose, opt.fake)
+   volume_out = pibNative_dir_fullPath + '/' + opt.keyname + '.mnc'
+
+   # OK, should be safe to turn on minc2 again -- mincIO *needs* minc2
+   ENV['MINC_FORCE_V2'] = '1'
+
+   # set processing status to "finished"
+   set_job_status(pibLogs_dir_fullPath, "beagle_pib_convert_ecat2mnc_JobStatus", "finished")
+
+   # log a 'done' message to the subject's master logfile, and then write out logfile
+   logger.log_stop_message(progname, opt.keyname, 'PiB', opt.scanDate)
+   logger.save_to_file()
+
+
+rescue RuntimeError => e
+   STDERR.puts e
+   exit 1
+end  # main()
+

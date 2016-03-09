@@ -1,0 +1,104 @@
+#!/usr/bin/env ruby
+
+require 'optparse'
+require 'ostruct'
+require 'pathname'
+require 'fileutils'
+
+# these libs are pointed to by the RUBYLIB env variable
+require 'hclab_function_library'
+
+# start of main script
+begin
+   opt                     = OpenStruct.new{}  # store input options
+   opt.verbose             = false
+   opt.debug               = false
+   opt.fake                = false
+   opt.clobber             = false
+
+   # List of arguments.
+   opts = OptionParser.new do |opts|
+      opts.banner = "Usage: #{$0} [Options]   ecat_volume_in.v   minc_volume_out.mnc"
+      opts.separator ""
+      opts.separator "Options:"
+
+      opts.on('-v', '--[no-]verbose', 'Run verbosely') { |v| opt.verbose = v }
+
+      opts.on('--clobber', 'Overwrite existing output file') { |c| opt.clobber = c }
+
+      opts.on('-d', '--debug', 'Print pedantic debugging messages') { |d| opt.debug = d }
+
+      opts.on('-f', '--fake', 'Do not actually execute the commands') { |f| opt.fake = f }
+
+      opts.on_tail("-h", "--help", "Show this very helpful help message") do
+         puts opts
+         exit
+      end
+
+   end  # OptionParser
+
+   # run parse!() method in the OptionParser object, passing ARGV
+   # NB: the "!" in parse!() removes the switches from ARGV
+   puts "Before OptionParser start ..." if opt.debug
+   begin
+      opts.parse!(ARGV)
+   rescue Exception => e
+      puts e, "", opts
+      exit
+   end
+
+   # INITIALIZATION
+   #
+   # start off by printing out some summary info about the dynamic volume
+
+   ecat_volume = ARGV[0]
+   minc_volume = ARGV[1]
+
+   puts "ecat volume is: #{ecat_volume}" if opt.debug
+   puts "minc output volume is: #{minc_volume}" if opt.debug
+   if (ecat_volume.nil? or minc_volume.nil?) then
+      puts "\n!!! Please specify both ecat input and minc output volume names"
+      puts opts
+      puts "\n\n"
+      exit
+   end
+
+   if (opt.verbose) then
+      puts "\n\n"
+      puts "  ---------------------" + "-"*(ecat_volume.length)
+      puts "    Processing volume: #{ecat_volume}"
+      puts "  ---------------------" + "-"*(ecat_volume.length)
+
+      puts "\nProcessing Options:"
+      puts "   **                         Verbose:    ON" if opt.verbose
+      puts "   **                           Debug:    ON" if opt.debug
+      puts "   **                            Fake:    ON" if opt.fake
+      puts "   **                         Clobber:    ON" if opt.clobber
+   end
+
+   #
+   # does the input volume have the right extension? (.v)
+   ecat_volume_filenameExt = File.extname(ecat_volume)
+   if (ecat_volume_filenameExt != ".v") then
+      puts "\n!!! Input file does not appear to be an Ecat file, since ..."
+      puts "!!! the file extension is not equal to '.v' "
+      puts opts
+      puts "\n\n"
+      exit
+   end
+
+   # convert ecat volume to minc
+   # ... do not do decay correction, since all modern scanners do the correction in-scanner
+   puts "\n** converting ecat volume (#{ecat_volume}) to minc ..."  if opt.vebose
+   clobber_switch = opt.clobber ? "-clobber" : " "
+   cmd = "ecattominc -verbose #{clobber_switch} -short -small_header -nodecay_correct  "
+   cmd << "#{ecat_volume}  "
+   cmd << "#{minc_volume}"
+   do_cmd(cmd, opt.verbose, opt.fake)
+   puts "** Done."  if opt.verbose
+
+rescue RuntimeError => e
+   STDERR.puts e
+   exit 1
+end  #main()
+

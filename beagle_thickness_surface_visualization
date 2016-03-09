@@ -1,0 +1,337 @@
+#!/usr/bin/env ruby
+# ==============================================================================
+# PURPOSE:
+#    This script produces surface visualization of CTA results.
+#      
+#
+# ==============================================================================
+
+require 'optparse'
+require 'ostruct'
+require 'pathname'
+require 'fileutils'
+require 'tmpdir'            # needed for Dir::tmpdir
+
+# load ruby gems
+require 'rubygems'
+require 'json'
+require 'pp'
+
+# load external dependencies
+require 'hclab_function_library'
+require 'beagle_function_library'
+require 'beagle_logger_classes'
+
+
+# submit a command to the system, and check for error
+def render_vector_onto_surface(pkt, keepTmp=false)
+
+   # create tmp/working dir
+   lh_images_dir = File.join(pkt.wrkDir, 'lh_images')
+   FileUtils.mkdir_p(lh_images_dir)
+   rh_images_dir = File.join(pkt.wrkDir, 'rh_images')
+   FileUtils.mkdir_p(rh_images_dir)
+
+   # cut vector file into LH and RH components
+   cmd = "sed   -n   1,40962p  "
+   cmd << "#{pkt.vzVectorFile}  "                           # input vector file
+   cmd << ">#{lh_images_dir}/thickness_lh.txt  "            # extracted LH vertices
+   do_cmd(cmd, pkt.verbose, pkt.fake)
+   #
+   cmd = "sed   -n   40963,81924p  "
+   cmd << "#{pkt.vzVectorFile}  "                           # input vector file
+   cmd << ">#{rh_images_dir}/thickness_rh.txt  "            # extracted RH vertices
+   do_cmd(cmd, pkt.verbose, pkt.fake)
+
+   # create LH surface components
+   cmd = "hclab_make_surface_images   -v   "
+   cmd << "--valueRange=#{pkt.vzRelNegT},#{pkt.vzRelPosT}  "   # visualization thresholds
+   cmd << "--colorMap=#{pkt.vzColorMap}  "                  # maximum absolute value in the color coding
+   cmd << "--underColr=#{pkt.vzUnderColr}  "
+   cmd << "--overColr=#{pkt.vzOverColr}  "
+   cmd << "--vsColumn='none'  "                             # set vector file column name to "none"
+   cmd << "#{lh_images_dir}/thickness_lh.txt   "            # vector file to render
+   cmd << "#{pkt.vzLhRenderSurface}  "                      # surface to render upon (Left hemisphere)
+   cmd << "#{lh_images_dir}"
+   do_cmd(cmd, pkt.verbose, pkt.fake)
+ 
+   # create RH surface components
+   cmd = "hclab_make_surface_images   -v   "
+   cmd << "--valueRange=#{pkt.vzRelNegT},#{pkt.vzRelPosT}  "   # visualization thresholds
+   cmd << "--colorMap=#{pkt.vzColorMap}  "                  # maximum absolute value in the color coding
+   cmd << "--underColr=#{pkt.vzUnderColr}  "
+   cmd << "--overColr=#{pkt.vzOverColr}  "
+   cmd << "--vsColumn='none'  "                             # set vector file column name to "none"
+   cmd << "#{rh_images_dir}/thickness_rh.txt   "            # vector file to render
+   cmd << "#{pkt.vzRhRenderSurface}  "                      # surface to render upon (Right hemisphere)
+   cmd << "#{rh_images_dir}"
+   do_cmd(cmd, pkt.verbose, pkt.fake)
+
+   # create the summary image
+   cmd = "hclab_make_summary_image -v    "
+   cmd << "#{lh_images_dir}  "
+   cmd << "#{rh_images_dir}  "
+   cmd << "#{pkt.vzOutputDir}"
+   do_cmd(cmd, pkt.verbose, pkt.fake)
+ 
+   # clean up the temp directories
+   if ( !keepTmp ) then
+      FileUtils.remove_dir(lh_images_dir)
+      FileUtils.remove_dir(rh_images_dir)
+      FileUtils.remove_dir(pkt.wrkDir)
+   end
+end
+
+
+
+
+# start of main script
+begin
+   opt                     = OpenStruct.new{}   # store input options
+   opt.verbose             = false
+   opt.debug               = false
+   opt.fake                = false
+   #
+   opt.keyname             = ""                 # subject keyname
+   opt.scanId              = ""
+   opt.settingsFile        = ""
+   #
+   opt.avgLhSurface        = ""                 # average LH surface file
+   opt.avgRhSurface        = ""                 # average RH surface file
+   opt.indivLhSurface      = ""                 # subject-specific LH surface file
+   opt.indivRhSurface      = ""                 # subject-specific RH surface file
+   opt.colorMap            = "hot"              # MNI colormap to use
+
+   # List of arguments.
+   opts = OptionParser.new do |opts|
+      opts.banner = "Usage: #{$0} [Options]"
+      opts.separator ""
+      opts.separator "Options:"
+
+      opts.on('-v', '--[no-]verbose', 'Run verbosely') { |v| opt.verbose = v }
+
+      opts.on('-d', '--debug', 'Print pedantic debugging messages') { |d| opt.debug = d }
+
+      opts.on('-f', '--fake', 'Do not actually execute the commands') { |f| opt.fake = f }
+
+      opts.on('--keyname subject_keyname', "subject keyname (e.g., trinity)") do |keyname|
+         opt.keyname = keyname.to_s
+         puts "** subject keyname: " + opt.keyname if opt.verbose
+      end
+
+      opts.on('--scanDate scan_date', "Format YYYYMMDD") do |scanDate|
+         opt.scanDate = scanDate
+         puts "** scan date: " + opt.scanDate if opt.verbose
+      end
+
+      opts.on('--settingsFile aggregated_settings_file', "Fullpath to the aggregated settings file ") do |settingsFile|
+         opt.settingsFile = settingsFile.to_s
+         puts "** Fullpath to the aggregated settings file: " + opt.settingsFile if opt.verbose
+      end
+
+      opts.on('--colorMap color_map', "color map to use in display (default is '#{opt.colorMap}')") do |cMap|
+         opt.colorMap = cMap.to_s
+         puts "** color map: " + opt.colorMap if opt.verbose
+      end
+
+      opts.on('--avgLhSurface avg_LH_surface', "average LH surface") do |avgLhSurface|
+         opt.avgLhSurface = avgLhSurface
+         puts "** average LH surface (fullpath to .obj file): " + opt.avgLhSurface if opt.verbose
+      end
+
+      opts.on('--avgRhSurface avg_RH_surface', "average RH surface") do |avgRhSurface|
+         opt.avgRhSurface = avgRhSurface
+         puts "** average RH surface (fullpath to .obj file): " + opt.avgRhSurface if opt.verbose
+      end
+
+      opts.on('--indivLhSurface individual_LH_surface', "individual LH surface") do |indivLhSurface|
+         opt.indivLhSurface = indivLhSurface
+         puts "** individual LH surface (fullpath to .obj file): " + opt.indivLhSurface if opt.verbose
+      end
+
+      opts.on('--indivRhSurface individual_RH_surface', "individual RH surface") do |indivRhSurface|
+         opt.indivRhSurface = indivRhSurface
+         puts "** individual RH surface (fullpath to .obj file): " + opt.indivRhSurface if opt.verbose
+      end
+
+      opts.on_tail("-h", "--help", "Show this very helpful help message") do
+         puts opts
+         exit
+      end
+   end  #OptionParser
+
+   # run parse!() method in the OptionParser object, passing ARGV
+   # NB: the "!" in parse!() removes the switches from ARGV
+   puts "Before OptionParser start ..." if opt.debug
+   begin
+      opts.parse!(ARGV)
+   rescue Exception => e
+      puts e, "", opts
+      exit
+   end
+
+
+
+  # = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
+  #
+
+   # check for aggregated settings file, then read if all looks OK
+   if ( opt.settingsFile.empty? ) then
+      puts "\n*** Error: Missing option(s) -- Loris aggregated settings file"
+      puts opts
+      exit
+   end
+   #
+   if ( !File.exists?(opt.settingsFile) || !File.file?(opt.settingsFile) ) then
+      puts sprintf("\n!!! Error: The specified Loris aggregated settings [%s] does not exist or is unreadable.", opt.settingsFile)
+      exit
+   end
+   #
+   settings = load_loris_aggregated_settings(opt.settingsFile, verbose=false, debug=false)
+
+
+   # init selected variables
+   LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
+   CIVET_VERSION = settings['CIVET_VERSION']
+   CIVET_ROOT_DIR = settings['CIVET_ROOT_DIR']
+   CIVET_PREFIX = settings['CIVET_PREFIX'] + '_'
+ 
+   # set surface visualization thresholds
+   VIZ_THRESHOLD_REL_POS = settings['THICKNESS_SURFACE_VIZ_REL_POS']
+   puts "Surface viz threshold value - relatively more positive: #{VIZ_THRESHOLD_REL_POS}" if opt.debug
+   VIZ_THRESHOLD_REL_NEG = settings['THICKNESS_SURFACE_VIZ_REL_NEG']
+   puts "Surface viz threshold value - relatively more negative: #{VIZ_THRESHOLD_REL_NEG}" if opt.debug
+
+   # set some useful values/directories
+   opt.scanId = opt.keyname + '-' + opt.scanDate
+   keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
+   
+   cta_dir = 'THICKNESS-' + opt.scanDate
+   cta_dir_fullPath = File.join(keyname_dir_fullPath, cta_dir)
+   ctaLogs_dir_fullPath = File.join(cta_dir_fullPath, 'logs')
+   ctaImages_dir_fullPath = File.join(cta_dir_fullPath, 'images')
+   ctaTmp_dir_fullPath = File.join(cta_dir_fullPath, "tmp")
+
+   # define some useful constants
+   THICKNESS_MM_FILE_SUFFIX = '_thickness_lhrh.txt'
+   THICKNESS_ZSCORES_FILE_SUFFIX = '_thickness_zscores.txt'
+
+
+
+   # * * * * *   Start of input argument validation   * * * * *
+
+   # keyname has been entered?
+   if ( opt.keyname.empty? ) then
+      puts "\n*** Error: Subject keyname is missing ... we really need this."
+      puts opts
+      exit
+   end
+
+   # both averaged surface objects entered?
+   if ( opt.avgLhSurface.empty? or opt.avgRhSurface.empty? ) then
+      puts "\n*** Error: One or both of the averaged surface objects have not been entered."
+      puts opts
+      exit
+   end
+   
+   # both subject-specific surface objects entered?
+   if ( opt.indivLhSurface.empty? or opt.indivRhSurface.empty? ) then
+      puts "\n*** Error: One or both of the subject-specific surface objects have not been entered."
+      puts opts
+      exit
+   end
+
+   # * * * * *   End of input argument validation   * * * * *
+
+
+   # load subject's master logfile; write a start message
+   progname = 'beagle_thickness_surface_visualization'
+   logger = BeagleLogger.new(opt.keyname, settings, eraseLog=false)
+   logger.log_start_message(progname, opt.keyname, 'THICKNESS', opt.scanDate)
+   logger.log_message(progname, opt.keyname, 'THICKNESS', opt.scanDate, 'civet_version', CIVET_VERSION)
+
+   # set job status to "running"
+   set_job_status(ctaLogs_dir_fullPath, "beagle_thickness_surface_visualization_JobStatus", "running")
+
+
+
+   # RENDER CORTICAL THICKNESS in MM
+   #
+   # set the full filename to render
+   thickness_mm_filename = opt.keyname + THICKNESS_MM_FILE_SUFFIX
+   thickness_mm_filename_fullpath = File.join(cta_dir_fullPath, thickness_mm_filename)
+
+   # setup packet of common parameters required for visualization
+   pkt = opt
+   pkt.vzRelPosT = 6.0
+   pkt.vzRelNegT = 1.5
+   pkt.vzColorMap = "spectral"
+   pkt.vzUnderColr="0.7,0.7,1.0"
+   pkt.vzOverColr="white"
+   pkt.vzVectorFile = thickness_mm_filename_fullpath
+
+   # render on the AVERAGE surface
+   vizOut = opt.keyname + "_thickness_mm_averageSurfaceViz.png"
+   vizOut_fullPath = File.join(ctaImages_dir_fullPath, vizOut)
+   pkt.vzLhRenderSurface = opt.avgLhSurface
+   pkt.vzRhRenderSurface = opt.avgRhSurface
+   pkt.vzOutputDir = vizOut_fullPath
+   pkt.wrkDir = File.join(ctaTmp_dir_fullPath, 'thickness_mm_avg')
+   render_vector_onto_surface(pkt, keepTmp=true)
+
+   # render on the INVIVIDUAL surface
+   vizOut = opt.keyname + "_thickness_mm_individualSurfaceViz.png"
+   vizOut_fullPath = File.join(ctaImages_dir_fullPath, vizOut)
+   pkt.vzLhRenderSurface = opt.indivLhSurface
+   pkt.vzRhRenderSurface = opt.indivRhSurface
+   pkt.vzOutputDir = vizOut_fullPath
+   pkt.wrkDir = File.join(ctaTmp_dir_fullPath, 'thickness_mm_indiv')
+   render_vector_onto_surface(pkt, keepTmp=true)
+
+
+
+   # RENDER CORTICAL THICKNESS Z-SCORES
+   #
+   # set the full filename to render
+   thickness_zscores_filename = opt.keyname + THICKNESS_ZSCORES_FILE_SUFFIX
+   thickness_zscores_filename_fullpath = File.join(cta_dir_fullPath, thickness_zscores_filename)
+
+   # setup packet of common parameters required for visualization
+   pkt = opt
+   pkt.vzRelPosT = VIZ_THRESHOLD_REL_POS
+   pkt.vzRelNegT = VIZ_THRESHOLD_REL_NEG
+   pkt.vzColorMap = "blue"
+   pkt.vzUnderColr="blue"
+   pkt.vzOverColr="0.7,0.7,1.0"
+   pkt.vzVectorFile = thickness_zscores_filename_fullpath
+
+   # render on the AVERAGE surface
+   vizOut = opt.keyname + "_thickness_zscores_averageSurfaceViz.png"
+   vizOut_fullPath = File.join(ctaImages_dir_fullPath, vizOut)
+   pkt.vzLhRenderSurface = opt.avgLhSurface
+   pkt.vzRhRenderSurface = opt.avgRhSurface
+   pkt.vzOutputDir = vizOut_fullPath
+   pkt.wrkDir = File.join(ctaTmp_dir_fullPath, 'thickness_zscores_avg')
+   render_vector_onto_surface(pkt, keepTmp=true)
+
+   # render on the INVIVIDUAL surface
+   vizOut = opt.keyname + "_thickness_zscores_individualSurfaceViz.png"
+   vizOut_fullPath = File.join(ctaImages_dir_fullPath, vizOut)
+   pkt.vzLhRenderSurface = opt.indivLhSurface
+   pkt.vzRhRenderSurface = opt.indivRhSurface
+   pkt.vzOutputDir = vizOut_fullPath
+   pkt.wrkDir = File.join(ctaTmp_dir_fullPath, 'thickness_zscores_indiv')
+   render_vector_onto_surface(pkt, keepTmp=true)
+
+   # set job status to "finished"
+   set_job_status(ctaLogs_dir_fullPath, "beagle_thickness_surface_visualization_JobStatus", "finished")
+
+   # log a 'done' message to the subject's master logfile, and then write out logfile
+   logger.log_stop_message(progname, opt.keyname, 'THICKNESS', opt.scanDate)
+   logger.save_to_file()
+
+rescue RuntimeError => e
+   STDERR.puts e
+   exit 1
+end  #main()
+

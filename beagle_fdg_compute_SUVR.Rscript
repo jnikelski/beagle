@@ -1,0 +1,384 @@
+#!/usr/bin/Rscript   --default-packages=utils,methods,base,stats,grDevices
+# ==============================================================================
+# PURPOSE:
+#
+usage_text <- 
+"\nbeagle_fdg_compute_SUVR.Rscript [options] "
+#
+description_text <- 
+"\n\n   The Purpose of this script is to compute SUVR values
+for a given subject.
+"
+#
+# ==============================================================================
+
+
+ls()
+print(usage_text)
+print(description_text)
+
+# Set options
+options(width=180)
+
+
+# <Parsing>
+#
+# parse the input line to grab our options and arguments
+suppressPackageStartupMessages(library("optparse"))
+#
+# set up a list of allowable options
+option_list <- list(
+   make_option(c("-v", "--verbose"), 
+         action="store_true", 
+         type="logical", default=FALSE, 
+         help="Generate all sorts of messages [default is *not* verbose]"),
+               
+   make_option(c("-d", "--debug"), 
+         action="store_true", 
+         type="logical", default=FALSE, 
+         help="Generate debug messages"),
+               
+   make_option(c("--keyname"), 
+         action="store", 
+         type="character", default=NULL, dest="keyname",
+         help="Subject keyname (E.g. \"yueh\")"),
+               
+   make_option(c("--scanDate"), 
+         action="store", 
+         type="character", default=NULL, dest="scanDate",
+         help="FDG scan date for subject. (E.g. \"20071009\")"),
+
+   make_option(c("--civetScanDate"), 
+         action="store", 
+         type="character", default=NULL, dest="civetScanDate",
+         help="Civet scan date for subject. (E.g. \"20071009\")"),
+               
+   make_option(c("--settingsFile"), 
+         action="store", 
+         type="character", default=NULL, dest="settingsFile",
+         help="Fullpath to the aggregated settings file")
+)
+#
+#
+# ... create the parser, and then parse the command line
+header_text <- paste(usage_text, description_text, sep="")
+parser <- OptionParser(usage=header_text, option_list=option_list)
+optX <- parse_args(parser, args=commandArgs(trailingOnly=TRUE), positional_arguments=TRUE)
+
+# ... move options and args into separate, more convenient structures
+O <- optX$options
+
+# check for the correct number of input volumes
+if ( length(optX$args) > 0 ){
+   stop("Extra positional arguments have been specified. Please stop that.")
+}
+#
+# </Parsing>
+
+
+#DEBUG ===========================================
+#O$ <- list()
+#O$verbose <- TRUE
+#O$debug <- TRUE
+#O$keyname <- "fenrir"
+#O$scanDate <- "20071009"
+#O$settingsFile <- "..."
+#
+log_file <- "loggingBySGE"
+#DEBUG ===========================================
+
+
+# add some extra derived values to the input packet
+O$scanId <- paste(O$keyname, O$scanDate, sep="-")
+O$civetScanId <- paste(O$keyname, O$civetScanDate, sep="-")
+O$fdg_dirname <- paste("FDG", O$scanDate, sep="-")
+
+
+
+# if the log is being written to SGE, then don't log internally
+if ( log_file != "loggingBySGE" ) {
+   sink(log_file)
+   options(echo=FALSE)
+}
+
+
+
+# = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
+#
+
+# load the HCLab Loris Analyis library
+library(lorisStatistics)
+#suppressPackageStartupMessages(library(lorisStatistics))  
+
+
+# read the Loris aggregated settings file (in JSON format)
+#cat(sprintf("BEFORE settings load\n"))
+settings <- read_loris_aggregated_settings(O$settingsFile, verbose=TRUE)
+#cat(sprintf("AFTER settings load\n"))
+
+
+
+# define some useful subdirectories
+LORIS_ROOT_DIR <- settings$LORIS_ROOT_DIR
+keyname_dir_fullPath <- file.path(LORIS_ROOT_DIR, O$keyname)
+
+# FDG-related paths
+fdgDir <- file.path(keyname_dir_fullPath, O$fdg_dirname)
+fdgDir_ratios <- file.path(fdgDir, "ratios")
+fdgDir_logs <- file.path(fdgDir, "logs")
+
+# civet-related paths
+CIVET_VERSION <- settings$CIVET_VERSION
+
+# AAL
+labels_dirname <- paste("AAL", O$civetScanDate, sep="-")
+labelsDir <- file.path(keyname_dir_fullPath, labels_dirname)
+#
+AAL_LABELS_VERSION <- settings$AAL_LABELS_VERSION
+LABEL_VOLUME_SUFFIX <- paste("_t1_final_", AAL_LABELS_VERSION, "Labels_gmMask.mnc", sep="")
+AAL_LABELS_NAMES <- settings$AAL_LABELS_NAMES
+AAL_LABELS_DIR <- settings$AAL_LABELS_DIR
+AAL_LABELS_DESCRIPTION_FILE <- file.path(AAL_LABELS_DIR, AAL_LABELS_NAMES)
+
+
+RATIO_VOLUME_SUFFIX <- "_fdgRatios_noMask.mnc"
+# ... create a unique Id to write to csv file
+uniqueId <- paste(O$keyname, O$fdg_dirname, sep="-")
+
+
+
+# set working directory as the FDG subject root dir
+wrkDir <- fdgDir
+setwd(wrkDir)
+
+
+
+# Process subject
+#
+#
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+
+
+# load subject's master logfile, and then write a start message
+llogger <- loris_logger_loadFromFile(O$keyname, settings)
+progname <- 'beagle_fdg_compute_SUVR.Rscript'
+llogger <- loris_logger_logStartMessage(progname, O$keyname, 'FDG', O$scanDate, llogger)
+llogger <- loris_logger_logMessage(progname, O$keyname, 'FDG',
+                                       O$scanDate,
+                                       'civet_version', CIVET_VERSION,
+                                       llogger)
+
+# set the status to "running"
+cat(sprintf("Computing FDG SUVR values for %s\n", O$scanId))
+status_filename_running <- "beagle_fdg_compute_SUVR_JobStatus.running"
+status_filename_running <- file.path(fdgDir_logs, status_filename_running)
+file.create(status_filename_running)
+
+
+# set label volume full path
+lblFilename <- paste(O$keyname, LABEL_VOLUME_SUFFIX, sep="")
+lblFilenameFullPath <- file.path(labelsDir, lblFilename)
+
+
+# set FDG ratio volume full path
+ratioFilename <- paste(O$keyname, "_fdgRatios_noMask.mnc", sep="")
+ratioFilenameFullPath <- file.path(fdgDir_ratios, ratioFilename)
+
+
+# read in the AAL label details
+lblFile <- AAL_LABELS_DESCRIPTION_FILE
+lbl_details.df <- load_AAL_label_info(lblFile)
+# ... only retain cerebral labels (no cerebellum, no outside-the-brain)
+lbl_details.df <- subset(lbl_details.df, lbl_details.df$isCerebrum != 0 )
+#lbl_details.df <- subset(lbl_details.df, lbl_details.df$LabelNo > 34 & lbl_details.df$LabelNo < 59)
+
+
+# compute SUVR over all ROIs
+suvr.df <- compute_suvr_by_roi(ratioFilenameFullPath, lblFilenameFullPath, lbl_details.df)
+print(suvr.df)
+
+
+
+
+# compute various aggregate SUVR values
+
+# create a receiving data.frame
+# ... same format as the other, as we'll be "rbind"ing later
+nValues <- 3
+suvr_aggr.df <- data.frame(Description=rep("",nValues),
+                        Abbrev=rep("",nValues),
+                        LabelNo=rep(0,nValues),
+                        LabelName=rep("SUVR",nValues),
+                        isCerebrum=rep(0,nValues),
+                        isCortical =rep(0,nValues),
+                        isNeoCortical =rep(0,nValues),
+                        isSecondaryLbl =rep(0,nValues),
+                        nVoxels=rep(0,nValues),
+                        suvr=rep(0,nValues), stringsAsFactors=FALSE)
+
+
+#
+# (1) SUVR over all cortical and sub-cortical gray matter
+#     ... no cerebellum, but everything else (including thalamus)
+#
+suvrX.df <- subset(suvr.df, suvr.df$isCerebrum != 0 & !is.na(suvr.df$nVoxels)) 
+print(suvrX.df)
+#
+# compute total voxels
+totalVoxels <- sum(suvrX.df$nVoxels)
+cat(sprintf("Total number of voxels comprising all SUVR ROIs: %d\n", totalVoxels))
+#
+# normalize ROI nVoxels to a proportion of the total. 
+# ... we can use use these values as weights
+vxWeights <- suvrX.df$nVoxels / totalVoxels
+cat(sprintf("Normalized ROI volumes:\n"))
+print(vxWeights)
+#
+# multiply the ROI mean SUVR values by the weights, then sum
+weighted_suvr <- suvrX.df$suvr * vxWeights
+cat(sprintf("Weighted SUVR values:\n"))
+print(weighted_suvr)
+#
+# sum it all up to get the weighted mean
+mean_weighted_suvr <- sum(weighted_suvr)
+cat(sprintf("SUVR over all gray matter: %g\n", mean_weighted_suvr))
+#
+# save these results out 
+suvr_aggr.df$Description[1] <- "SUVR over all cerebral gray matter"
+suvr_aggr.df$Abbrev[1] <- "NA"
+suvr_aggr.df$LabelNo[1] <- NA
+suvr_aggr.df$LabelName[1] <- "SUVR"
+suvr_aggr.df$nVoxels[1] <- totalVoxels
+suvr_aggr.df$suvr[1] <- mean_weighted_suvr
+suvr_aggr.df$isCerebrum[1] <- 1
+suvr_aggr.df$isCortical[1] <- 0
+suvr_aggr.df$isNeoCortical[1] <- 0
+suvr_aggr.df$isSecondaryLbl[1] <- 0
+print(suvr_aggr.df)
+#
+# write selected values to the logfile
+llogger <- loris_logger_logMessage(progname, O$keyname, 'FDG', O$scanDate, 
+                                       'suvr_over_cerebral_gm', mean_weighted_suvr, llogger)
+
+
+#
+# (2) SUVR over all cortical gray matter
+#
+suvrX.df <- subset(suvr.df, suvr.df$isCortical != 0  & !is.na(suvr.df$nVoxels)) 
+print(suvrX.df)
+#
+# compute total voxels
+totalVoxels <- sum(suvrX.df$nVoxels)
+cat(sprintf("Total number of voxels comprising all SUVR ROIs: %d\n", totalVoxels))
+#
+# normalize ROI nVoxels to a proportion of the total. 
+# ... we can use use these values as weights
+vxWeights <- suvrX.df$nVoxels / totalVoxels
+cat(sprintf("Normalized ROI volumes:\n"))
+print(vxWeights)
+#
+# multiply the ROI mean SUVR values by the weights, then sum
+weighted_suvr <- suvrX.df$suvr * vxWeights
+cat(sprintf("Weighted SUVR values:\n"))
+print(weighted_suvr)
+#
+# sum it all up to get the weighted mean
+mean_weighted_suvr <- sum(weighted_suvr)
+cat(sprintf("SUVR over all gray matter: %g\n", mean_weighted_suvr))
+#
+# save these results out 
+suvr_aggr.df$Description[2] <- "SUVR over all cortical gray matter"
+suvr_aggr.df$Abbrev[2] <- "NA"
+suvr_aggr.df$LabelNo[2] <- NA
+suvr_aggr.df$LabelName[2] <- "SUVR"
+suvr_aggr.df$nVoxels[2] <- totalVoxels
+suvr_aggr.df$suvr[2] <- mean_weighted_suvr
+suvr_aggr.df$isCerebrum[2] <- 0
+suvr_aggr.df$isCortical[2] <- 1
+suvr_aggr.df$isNeoCortical[2] <- 0
+suvr_aggr.df$isSecondaryLbl[2] <- 0
+print(suvr_aggr.df)
+#
+# write selected values to the logfile
+llogger <- loris_logger_logMessage(progname, O$keyname, 'FDG', O$scanDate, 
+                                       'suvr_over_cortical_gm', mean_weighted_suvr, llogger)
+
+
+
+#
+# (3) SUVR over all neo-cortical gray matter
+#
+suvrX.df <- subset(suvr.df, suvr.df$isNeoCortical != 0  & !is.na(suvr.df$nVoxels)) 
+print(suvrX.df)
+#
+# compute total voxels
+totalVoxels <- sum(suvrX.df$nVoxels)
+cat(sprintf("Total number of voxels comprising all SUVR ROIs: %d\n", totalVoxels))
+#
+# normalize ROI nVoxels to a proportion of the total. 
+# ... we can use use these values as weights
+vxWeights <- suvrX.df$nVoxels / totalVoxels
+cat(sprintf("Normalized ROI volumes:\n"))
+print(vxWeights)
+#
+# multiply the ROI mean SUVR values by the weights, then sum
+weighted_suvr <- suvrX.df$suvr * vxWeights
+cat(sprintf("Weighted SUVR values:\n"))
+print(weighted_suvr)
+#
+# sum it all up to get the weighted mean
+mean_weighted_suvr <- sum(weighted_suvr)
+cat(sprintf("SUVR over all gray matter: %g\n", mean_weighted_suvr))
+#
+# save these results out 
+suvr_aggr.df$Description[3] <- "SUVR over all neo-cortical gray matter"
+suvr_aggr.df$Abbrev[3] <- "NA"
+suvr_aggr.df$LabelNo[3] <- NA
+suvr_aggr.df$LabelName[3] <- "SUVR"
+suvr_aggr.df$nVoxels[3] <- totalVoxels
+suvr_aggr.df$suvr[3] <- mean_weighted_suvr
+suvr_aggr.df$isCerebrum[3] <- 0
+suvr_aggr.df$isCortical[3] <- 0
+suvr_aggr.df$isNeoCortical[3] <- 1
+suvr_aggr.df$isSecondaryLbl[3] <- 0
+print(suvr_aggr.df)
+#
+# write selected values to the logfile
+llogger <- loris_logger_logMessage(progname, O$keyname, 'FDG', O$scanDate, 
+                                       'suvr_over_neo-cortical_gm', mean_weighted_suvr, llogger)
+
+
+
+
+# write out the results to a csv file (append keyname and dirname first)
+suvr.df <- rbind(suvr.df, suvr_aggr.df)
+suvr.df <- cbind(uniqueId, keyname=O$keyname, dirname=O$fdg_dirname, suvr.df)
+#
+csvFilename <- paste(O$keyname, "_fdgRatios_SUVRs_", AAL_LABELS_VERSION, ".csv", sep="")
+ratioFilenameFullPath <- file.path(fdgDir_ratios, csvFilename)
+write.csv(suvr.df, ratioFilenameFullPath, row.names=FALSE)
+
+
+# close log file
+if ( log_file != "loggingBySGE" ) {
+   sink()
+}
+
+# set the status to "finished"
+status_filename_finished <- "beagle_fdg_compute_SUVR_JobStatus.finished"
+status_filename_finished <- file.path(fdgDir_logs, status_filename_finished)
+file.rename(status_filename_running, status_filename_finished)
+
+
+# log a 'done' message to the subject's master logfile, and then write out logfile
+llogger <- loris_logger_logStopMessage(progname, O$keyname, 'FDG', O$scanDate, llogger)
+loris_logger_saveToFile(O$keyname, llogger, settings)
+
+# print the log entries (for fun)
+logger.df <- loris_logger_loadFromFileAsDataFrame(O$keyname, settings)
+options(width=9999)
+print(logger.df)
+
+
+q(save="no")
+

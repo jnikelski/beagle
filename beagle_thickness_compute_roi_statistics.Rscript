@@ -1,0 +1,260 @@
+#!/usr/bin/Rscript   --default-packages=utils,methods,base,stats,grDevices
+# ==============================================================================
+# PURPOSE:
+#
+usage_text <- 
+"\nbeagle_thickness_compute_roi_statistics.Rscript [options] "
+#
+description_text <- 
+"\n\n   The purpose of this script is to compute ROI-level cortical
+thickness zscores, given a vector file containing a zscore at each
+vertex. Results are cast into an AAL template, thus providing 
+quantification by AAL ROI. 
+"
+#
+# ==============================================================================
+
+# Set options
+options(width=180)
+
+
+# <Parsing>
+#
+# parse the input line to grab our options and arguments
+suppressPackageStartupMessages(library("optparse"))
+#
+# set up a list of allowable options
+option_list <- list(
+   make_option(c("-v", "--verbose"), 
+         action="store_true", 
+         type="logical", default=FALSE, 
+         help="Generate all sorts of messages [default is *not* verbose]"),
+               
+   make_option(c("-d", "--debug"), 
+         action="store_true", 
+         type="logical", default=FALSE, 
+         help="Generate debug messages"),
+               
+   make_option(c("--keyname"), 
+         action="store", 
+         type="character", default=NULL, dest="keyname",
+         help="Subject keyname (E.g. \"yueh\")"),
+
+   make_option(c("--scanDate"), 
+         action="store", 
+         type="character", default=NULL, dest="scanDate",
+         help="Civet scan date for subject. (E.g. \"20071009\")"),
+               
+   make_option(c("--settingsFile"), 
+         action="store", 
+         type="character", default=NULL, dest="settingsFile",
+         help="Fullpath to the aggregated settings file"),
+               
+   make_option(c("--thicknessVectorFile"), 
+         action="store", 
+         type="character", default=NULL, dest="thicknessVectorFile",
+         help="Thickness vector file. (LH and RH, fullpath)"),
+               
+   make_option(c("--zscoresVectorFile"), 
+         action="store", 
+         type="character", default=NULL, dest="zscoresVectorFile",
+         help="Thickness z-scores vector file. (LH and RH, fullpath)"),
+               
+   make_option(c("--surfaceLabelsVectorFile"), 
+         action="store", 
+         type="character", default=NULL, dest="surfaceLabelsVectorFile",
+         help="Extracted AAL labels vector file. (LH and RH, fullpath)")
+)
+#
+#
+# ... create the parser, and then parse the command line
+header_text <- paste(usage_text, description_text, sep="")
+parser <- OptionParser(usage=header_text, option_list=option_list)
+optX <- parse_args(parser, args=commandArgs(trailingOnly=TRUE), positional_arguments=TRUE)
+
+# ... move options and args into separate, more convenient structures
+opts_in <- optX$options
+print(opts_in)
+
+#
+# </Parsing>
+
+
+#DEBUG 1 ===========================================
+#opts_in <- list()
+#opts_in$verbose <- TRUE
+#opts_in$debug <- TRUE
+#opts_in$keyname <- "fenrir"
+#opts_in$scanDate <- "20071009"
+#opts_in$settingsFile <- "..."
+
+#opts_in$thicknessVectorFile <- "/data/raid01/lorisData/zzzOutput_lorisX/fenrir/THICKNESS-20100929/fenrir_thickness_lhrh.txt"
+#opts_in$zscoresVectorFile <- "/data/raid01/lorisData/zzzOutput_lorisX/fenrir/THICKNESS-20100929/fenrir_thickness_zscores.txt"
+#opts_in$surfaceLabelsVectorFile <- "/data/raid01/lorisData/zzzOutput_lorisX/fenrir/THICKNESS-20100929/fenrir_extracted_aal_surface_labels.txt"
+#
+log_file <- "loggingBySGE"
+#DEBUG 1 ===========================================
+
+
+# add some extra derived values to the input packet
+opts_in$scanId <- paste(opts_in$keyname, opts_in$scanDate, sep="-")
+opts_in$cta_dirname <- paste("THICKNESS", opts_in$scanDate, sep="-")
+
+
+
+# if the log is being written to SGE, then don't log internally
+if ( log_file != "loggingBySGE" ) {
+   sink(log_file)
+   options(echo=FALSE)
+}
+
+
+
+# = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
+#
+
+# load the HCLab Loris Analyis library
+library(lorisStatistics)
+#suppressPackageStartupMessages(library(lorisStatistics))  
+
+
+# read the Loris aggregated settings file (in JSON format)
+#cat(sprintf("BEFORE settings load\n"))
+settings <- read_loris_aggregated_settings(opts_in$settingsFile, verbose=TRUE)
+#cat(sprintf("AFTER settings load\n"))
+
+
+AAL_LABELS_VERSION <- settings$AAL_LABELS_VERSION
+AAL_LABELS_DIR <- settings$AAL_LABELS_DIR
+AAL_LABELS_NAMES <- settings$AAL_LABELS_NAMES
+AAL_LABELS_DESCRIPTION_FILE <- file.path(AAL_LABELS_DIR, AAL_LABELS_NAMES)
+
+CIVET_VERSION <- settings$CIVET_VERSION
+CIVET_PREFIX <- paste(settings$CIVET_PREFIX, '_', sep='')
+CIVET_SURFACE_NO_OF_VERTICES_LEFT <- as.numeric(settings$CIVET_SURFACE_NO_OF_VERTICES_LEFT)
+CIVET_SURFACE_NO_OF_VERTICES_RIGHT <- as.numeric(settings$CIVET_SURFACE_NO_OF_VERTICES_RIGHT)
+CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN <- as.numeric(settings$CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN)
+
+
+# set some useful constants
+#
+# single-tailed normal distribution stuff
+zTholds <- c(-2.33, -3.09, -3.71)
+zTholds_pValues <- c("0.01", "0.001", "0.0001")
+
+
+# define some useful subdirectories
+LORIS_ROOT_DIR <- settings$LORIS_ROOT_DIR
+loris_subject_rootDir <- file.path(LORIS_ROOT_DIR, opts_in$keyname)
+cta_dir_fullPath <- file.path(loris_subject_rootDir, opts_in$cta_dirname)
+ctaLogs_dir_fullPath <- file.path(cta_dir_fullPath, "logs")
+ctaImages_dir_fullPath <- file.path(cta_dir_fullPath, "images")
+
+
+
+
+# set working directory as the THICKNESS subject root dir
+wrkDir <- cta_dir_fullPath
+setwd(wrkDir)
+
+
+
+# load subject's master logfile, and then write a start message
+llogger <- loris_logger_loadFromFile(opts_in$keyname, settings)
+progname <- 'beagle_thickness_compute_roi_statistics.Rscript'
+llogger <- loris_logger_logStartMessage(progname, opts_in$keyname, 'THICKNESS', opts_in$scanDate, llogger)
+llogger <- loris_logger_logMessage(progname, opts_in$keyname, 'THICKNESS',
+                                       opts_in$scanDate,
+                                       'civet_version', CIVET_VERSION,
+                                       llogger)
+
+
+# set the status to "running"
+cat(sprintf("Performing Cortical Thickness ROI processing for %s\n", opts_in$scanId))
+status_filename_running <- "beagle_thickness_compute_roi_statistics_JobStatus.running"
+status_filename_running <- file.path(ctaLogs_dir_fullPath, status_filename_running)
+file.create(status_filename_running)
+
+
+# read in the AAL label details
+lblFile <- AAL_LABELS_DESCRIPTION_FILE
+lbl_details.df <- load_AAL_label_info(lblFile)
+print(lbl_details.df)
+
+# remove the bits that we don't need (only need cortical, of course)
+# ... and then add extra columns to handle the stats
+lbl_details.df <- subset(lbl_details.df, lbl_details.df$isCortical == 1, select=Description:LabelName)
+lbl_details.df$size <- rep(NA, nrow(lbl_details.df))
+lbl_details.df$ct_mean <- rep(NA, nrow(lbl_details.df))
+lbl_details.df$ct_stdev <- rep(NA, nrow(lbl_details.df))
+lbl_details.df$z_mean <- rep(NA, nrow(lbl_details.df))
+lbl_details.df$z_stdev <- rep(NA, nrow(lbl_details.df))
+print(lbl_details.df)
+
+# load vertex-level info from vector files
+thickness.vec <- scan(opts_in$thicknessVectorFile, nmax=CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN)
+zscores.vec <- scan(opts_in$zscoresVectorFile, nmax=CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN)
+#
+# round labels to get integer-ish values
+aal_labels.vec <- scan(opts_in$surfaceLabelsVectorFile, nmax=CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN)
+aal_labels.vec <- round(aal_labels.vec)
+
+
+# compute number of vertices in each ROI
+roi_sizes <- table(aal_labels.vec)
+
+# compute various things by ROI number
+thickness_mean_roi <- tapply(thickness.vec, aal_labels.vec, mean)
+thickness_stdev_roi <- tapply(thickness.vec, aal_labels.vec, sd)
+#
+zscores_mean_roi <- tapply(zscores.vec, aal_labels.vec, mean)
+zscores_stdev_roi <- tapply(zscores.vec, aal_labels.vec, sd)
+
+# loop over all cortical entries, and move stats into the receiving data.frame
+for ( ndx in 1:nrow(lbl_details.df) ) {
+   lbl_char <- as.character(lbl_details.df$LabelNo[ndx])
+   lbl_numeric <- lbl_details.df$LabelNo[ndx]
+   lbl_details.df$size[ndx] <- roi_sizes[lbl_char]
+   #cat(sprintf("ndx: %d,  lbl_char: %s, lbl_numeric: %d, size: %d\n", ndx, lbl_char, lbl_numeric, roi_sizes[lbl_char]))
+   lbl_details.df$ct_mean[ndx] <- thickness_mean_roi[lbl_char]
+   lbl_details.df$ct_stdev[ndx] <- thickness_stdev_roi[lbl_char]
+   lbl_details.df$z_mean[ndx] <- zscores_mean_roi[lbl_char]
+   lbl_details.df$z_stdev[ndx] <- zscores_stdev_roi[lbl_char]
+}
+print(lbl_details.df)
+
+
+# write out the results to a csv file (append keyname and dirname first)
+quant_csv.df <- cbind(uniqueId=paste(opts_in$keyname, opts_in$cta_dirname, sep="-"),
+                        keyname=opts_in$keyname, 
+                        dirname=opts_in$cta_dirname, 
+                        lbl_details.df)
+
+csvFilename <- paste(opts_in$keyname,
+                     "_thickness_statistics_by_roi_",
+                     AAL_LABELS_VERSION,
+                     ".csv", sep="")
+csvFilenameFullPath <- file.path(cta_dir_fullPath, csvFilename)
+write.csv(quant_csv.df, csvFilenameFullPath, row.names=FALSE)
+
+
+
+# close log file
+if ( log_file != "loggingBySGE" ) {
+   sink()
+}
+
+# set the status to "finished"
+status_filename_finished <- "beagle_thickness_compute_roi_statistics_JobStatus.finished"
+status_filename_finished <- file.path(ctaLogs_dir_fullPath, status_filename_finished)
+file.rename(status_filename_running, status_filename_finished)
+
+
+# log a 'done' message to the subject's master logfile, and then write out logfile
+llogger <- loris_logger_logStopMessage(progname, opts_in$keyname, 'THICKNESS', opts_in$scanDate, llogger)
+loris_logger_saveToFile(opts_in$keyname, llogger, settings)
+
+
+
+q(save="no")
+

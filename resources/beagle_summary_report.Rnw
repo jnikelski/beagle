@@ -1,0 +1,149 @@
+\documentclass[12pt,letterpaper, oneside,titlepage]{report}
+
+
+%
+% If you have postscript graphics to include, load the graphicx package
+\usepackage[margin=1.5in, showframe=true]{geometry}
+\usepackage{rotating}
+\usepackage{longtable}
+\usepackage{graphicx}
+
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+
+\lhead[Andrew Roberts]{}
+\rhead[]{Andrew Roberts}
+\lhead[]{\today}
+\rhead[\today]{}
+\lfoot[\thepage]{}
+\rfoot[]{\thepage}
+
+
+
+\usepackage[final]{pdfpages}
+
+% use the new "caption" package (not "caption2")
+\usepackage[margin=10pt,font=small,labelfont=bf,labelsep=period]{caption}
+
+%\usepackage[round, longnamesfirst]{natbib}
+%\usepackage[round]{natbib}
+
+% this *is* a Sweave doc
+\usepackage{Sweave}
+
+% make nice URLs
+\usepackage{url}
+
+% only treat underscores as subscripts when in math mode
+%\usepackage{underscore}
+
+
+
+% Package to modify line spacing. The following commands are provided:
+% \singlespacing
+% \onehalfspacing
+% \doublespacing
+% \begin{spacing}{1.2} ... \end{spacing} 
+\usepackage{setspace}
+
+% use the pdfsync package to allow syncing between TextMate and Slim (the pdf viewer)
+%\usepackage{pdfsync}
+%
+
+% List of words, separated by spaces
+\hyphenation{epi-sodic OTSam OTSal OTSpl extra-striate}
+
+
+\begin{document}
+
+% Set line spacing (for thesis, must be 1.5 to 2.0) -- from doublespace package
+%\setstretch{1.5}
+%\newcaptionstyle{ejnapa}{\captionlabel\\\textit{\captiontext}\par}
+
+% set differnt caption styles for Figures and Tables
+\captionsetup[figure]{labelsep=period}
+%\captionsetup[table]{labelsep=newline, singlelinecheck=false, font={sf}}
+
+
+% Create a thick \hline 
+\newdimen\arrayruleHwidth
+\setlength{\arrayruleHwidth}{2pt}
+\makeatletter
+\def\Hline{\noalign{\ifnum0=`}\fi\hrule \@height \arrayruleHwidth \futurelet \@tempa\@xhline}
+\makeatother
+
+
+
+<<echo=FALSE>>=
+# load Loris and rmincIO libraries
+library(lorisStatistics)
+
+# read passed arguments from args file
+# (1) keyname           [ e.g., tofty]
+# (2) rootDir           [ the Loris output root, containing all keyname subdirs]
+# (3) analysis_type     [ VBM, PiB, FDG, THICKNESS, etc ... must match subdir prefix]
+# (4) scan_date         [ YYYYMMDD ... must match subdir suffix]
+# (5) settings_filename [ fullpath to the aggregated settings file]
+#
+source("args_file.txt")
+
+# read the Beagle aggregated settings file
+settings <- read_loris_aggregated_settings(settings_filename, verbose=FALSE)
+#print(settings)
+@
+
+
+\title{\textbf{\Huge{Beagle Processing Pipeline}} \\[1 cm] 
+    \LARGE{Beagle Version \Sexpr{settings$LORIS_VERSION} } \\[1 cm]
+    \Large{Summary Report for \LARGE{\texttt{\Sexpr{keyname}}}} \\[3 cm]
+} 
+
+\author{Dr. Howard Chertkow Lab\\Lady Davis Institute for Medical Research\\ McGill University\\ Montr\'{e}al, Quebec, Canada}
+
+\date{\today}
+\maketitle
+
+
+% set line-spacing for the document proper
+\onehalfspacing
+
+% set default Sweave options
+\SweaveOpts{engine=R, split=FALSE}
+
+
+% add in the TOC-relative stuff
+\tableofcontents
+\listoftables
+\listoffigures
+
+
+
+\input{list_of_chapters.tex}
+
+
+
+\appendix
+\chapter{Beagle Configuration Settings}
+\label{appendix_config_settings}
+The Beagle processing pipeline is dynamically configured through a settings file that is read at run time.  The actual settings in effect at the time that this report was generated are listed in the table below.
+
+
+<<echo=FALSE>>=
+library(xtable)
+settings.df <- data.frame(Setting=names(settings), Value=unlist(settings, use.names=FALSE))
+settingsXtab <- xtable(settings.df)
+@
+
+\scalebox{0.85}{ 
+
+<<results=tex, echo=FALSE>>=
+print(settingsXtab, include.rownames=FALSE, size="scriptsize", floating=FALSE)
+@
+} 
+
+
+
+\end{document}
+
+
+

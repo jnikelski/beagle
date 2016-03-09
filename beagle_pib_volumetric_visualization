@@ -1,0 +1,249 @@
+#!/usr/bin/env ruby
+# ==============================================================================
+# PURPOSE:
+#    This script is supposed to be executed by it's driver, to produce
+#      volumetric visualization of PiB ratios.
+#
+# ==============================================================================
+
+require 'optparse'
+require 'ostruct'
+require 'pathname'
+require 'fileutils'
+require 'tmpdir'            # needed for Dir::tmpdir
+
+# load ruby gems
+require 'rubygems'
+require 'json'
+require 'pp'
+
+# load external dependencies
+require 'hclab_function_library'
+require 'beagle_function_library'
+require 'beagle_logger_classes'
+
+# start of main script
+begin
+   opt                     = OpenStruct.new{}  # store input options
+   opt.verbose             = false
+   opt.debug               = false
+   opt.fake                = false
+   #
+   opt.keyname             = ""                 # subject keyname
+   opt.scanDate            = ""
+   opt.scanId              = ""                 # this is a derived value
+   opt.civetScanDate       = ""
+   opt.settingsFile        = ""
+   #
+   opt.gmMaskVol           = ""                 # gray matter mask volume
+   opt.t1UnderlayVol       = ""                 # t1 underlay volume
+
+   # List of arguments.
+   opts = OptionParser.new do |opts|
+      opts.banner = "Usage: #{$0} [Options]"
+      opts.separator ""
+      opts.separator "Options:"
+
+      opts.on('-v', '--[no-]verbose', 'Run verbosely') { |v| opt.verbose = v }
+
+      opts.on('-d', '--debug', 'Print pedantic debugging messages') { |d| opt.debug = d }
+
+      opts.on('-f', '--fake', 'Do not actually execute the commands') { |f| opt.fake = f }
+
+      opts.on('--keyname subject_keyname', "subject keyname (e.g., trinity)") do |keyname|
+         opt.keyname = keyname.to_s
+         puts "** subject keyname: " + opt.keyname if opt.verbose
+      end
+
+      opts.on('--scanDate scan_date', "Format YYYYMMDD") do |scanDate|
+         opt.scanDate = scanDate
+         puts "** scan date: " + opt.scanDate if opt.verbose
+      end
+
+      opts.on('--civetScanDate civet_scan_id', "Format keyname-scanDate") do |civetScanDate|
+         opt.civetScanDate = civetScanDate
+         puts "** Civet scan date: " + opt.civetScanDate if opt.verbose
+      end
+
+      opts.on('--settingsFile aggregated_settings_file', "Fullpath to the aggregated settings file ") do |settingsFile|
+         opt.settingsFile = settingsFile.to_s
+         puts "** Fullpath to the aggregated settings file: " + opt.settingsFile if opt.verbose
+      end
+         
+      opts.on('--gmMaskVol gm_mask_vol', "gray matter mask volume") do |gmMaskVol|
+         opt.gmMaskVol = gmMaskVol
+         puts "** gray matter mask volume (fullpath): " + opt.gmMaskVol if opt.verbose
+      end
+
+      opts.on('--t1UnderlayVol t1_underlay_vol', "structural underlay volume") do |t1UnderlayVol|
+         opt.t1UnderlayVol = t1UnderlayVol
+         puts "** structural underlay volume (fullpath): " + opt.t1UnderlayVol if opt.verbose
+      end
+
+      opts.on_tail("-h", "--help", "Show this very helpful help message") do
+         puts opts
+         exit
+      end
+
+   end  # OptionParser
+
+   # run parse!() method in the OptionParser object, passing ARGV
+   # NB: the "!" in parse!() removes the switches from ARGV
+   puts "Before OptionParser start ..." if opt.debug
+   begin
+      opts.parse!(ARGV)
+   rescue Exception => e
+      puts e, "", opts
+      exit
+   end
+
+
+
+   # = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
+   #
+
+   # check for aggregated settings file, then read if all looks OK
+   if ( opt.settingsFile.empty? ) then
+      puts "\n*** Error: Missing option(s) -- Loris aggregated settings file"
+      puts opts
+      exit
+   end
+   #
+   if ( !File.exists?(opt.settingsFile) || !File.file?(opt.settingsFile) ) then
+      puts sprintf("\n!!! Error: The specified Loris aggregated settings [%s] does not exist or is unreadable.", opt.settingsFile)
+      exit
+   end
+   #
+   settings = load_loris_aggregated_settings(opt.settingsFile, verbose=false, debug=false)
+
+   # init associated variables
+   LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
+   CIVET_VERSION = settings['CIVET_VERSION']
+   CIVET_ROOT_DIR = settings['CIVET_ROOT_DIR']
+   CIVET_PREFIX = settings['CIVET_PREFIX'] + '_'
+   CIVET_FINAL_T1_VOLUME_SUFFIX = settings['CIVET_FINAL_T1_VOLUME_SUFFIX']
+   
+   # set volumetric visualization thresholds
+   PIB_CEREB_THOLD_PCT = settings['PIB_CEREB_THOLD_PCT'].to_f
+   PIB_VOLUMETRIC_VIZ_FLOOR = settings['PIB_VOLUMETRIC_VIZ_FLOOR']
+   PIB_VOLUMETRIC_VIZ_CEILING = settings['PIB_VOLUMETRIC_VIZ_CEILING']
+   puts "Volumetric visualization min/max: #{PIB_VOLUMETRIC_VIZ_FLOOR}/#{PIB_VOLUMETRIC_VIZ_CEILING}" if opt.debug
+
+   # define some useful constants
+   RATIOS_VOLUME_PATTERN = '*_pibRatios_*.mnc'
+
+   # set some useful values/paths
+   opt.scanId = opt.keyname + '-' + opt.scanDate
+   opt.civetScanId = opt.keyname + '-' + opt.civetScanDate
+   keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
+   #
+   pib_dir = 'PiB-' + opt.scanDate
+   pib_dir_fullPath = File.join(keyname_dir_fullPath, pib_dir)
+   pibRatios_dir_fullPath = File.join(pib_dir_fullPath, 'ratios')
+   pibLogs_dir_fullPath = File.join(pib_dir_fullPath, 'logs')
+   pibImages_dir_fullPath = File.join(pib_dir_fullPath, 'images')
+
+
+
+
+   # * * * * *  START of input argument validation   * * * * *
+   #
+   # keyname has been entered?
+   if ( opt.keyname.empty? or opt.scanDate.empty? ) then
+      puts "\n*** Error: Subject keyname OR PiB scan date is missing"
+      puts opts
+      exit
+   end
+
+   # Civet scan date entered?
+   if ( opt.civetScanDate.empty? ) then
+      puts "\n*** Error: Civet scan date is missing"
+      puts opts
+      exit
+   end
+
+   # gray matter mask volume has been entered?
+   if ( opt.gmMaskVol.empty? ) then
+      puts "\n*** Error: Gray matter mask volume is missing ... we really need that."
+      puts opts
+      exit
+   end
+   
+   # anatomical underlay volume has been entered?
+   if ( opt.t1UnderlayVol? ) then
+      puts "\n*** Error: Anatomical underlay volume is missing ... we really need that."
+      puts opts
+      exit
+   end
+      
+   # find all ratio volumes -- must be at least one
+    ratio_volumes = match_glob_in_dir(pibRatios_dir_fullPath, pattern=RATIOS_VOLUME_PATTERN, return_matches=true, verbose=true)
+   if ( ratio_volumes.length < 1 ) then
+      puts sprintf("!!! Error: No PiB ratio volumes found for for %s-%s", opt.keyname, opt.scanId)
+      puts opts
+      exit
+   end
+   #
+   # * * * * *  END of input argument validation   * * * * * * * *
+   # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+
+
+   # load subject's master logfile; write a start message
+   progname = 'beagle_pib_volumetric_visualization'
+   logger = BeagleLogger.new(opt.keyname, settings, eraseLog=false)
+   logger.log_start_message(progname, opt.keyname, 'PiB', opt.scanDate)
+   logger.log_message(progname, opt.keyname, 'PiB', opt.scanDate, 'civet_version', CIVET_VERSION)
+
+   # now that we've verified that we have a /logs subdir,
+   # ... set processing status to "running"
+   set_job_status(pibLogs_dir_fullPath, "beagle_pib_volumetric_visualization_JobStatus", "running")
+
+
+
+   #
+   # build mincthumbs commandline and execute 
+   # ... applying gray matter mask as part of the process
+   # ... LOOPING over all ratio volumes
+   #
+  
+   ratio_volumes.each{ |ratioVolume_fullPath|
+
+      # in order to name the output files correctly, we need to 
+      # extract the reference tissue names from the ratio filenames
+      # e.g. filename: p028_pibRatios_refGlobalWM_noMask.mnc
+      #      ... so, we want the 3rd component
+      
+      ratio_filename = File.basename(ratioVolume_fullPath)
+      refTissue = ratio_filename.split('_')[2]
+
+      vizOut = opt.keyname + "_pibRatios_" + refTissue + "_volumetricViz.pdf"
+      vizOut_fullPath = File.join(pibImages_dir_fullPath, vizOut)
+
+      cmd = "mincthumbs   -v  "
+      cmd << "-tthresh #{PIB_VOLUMETRIC_VIZ_FLOOR} "     # visualization threshold - low cutoff
+      cmd << "-tfloor #{PIB_VOLUMETRIC_VIZ_FLOOR} "      # make the same as -tthresh to get "register-like" color mapping (see mincthumbs -help)
+      cmd << "-tceiling #{PIB_VOLUMETRIC_VIZ_CEILING}  " # maximum absolute value in the color coding
+      cmd << "-tblendradius 0.001  "            # do not do any blending around the edges
+      cmd << "-opacity 0.5  "                   # make the dynamic image a little transparent (like register)
+      #cmd << "-contrast 1  "                    # anatomical contrast (also affects brightness)
+      cmd << "-pos  "                           # only show positive values
+      #cmd << "-maskimage #{opt.gmMaskVol}  "    # apply the gm mask to the ratio volume
+      cmd << "-out #{vizOut_fullPath}  "        # output filename
+      cmd << "#{ratioVolume_fullPath}  "        # ratio volume
+      cmd << "#{opt.t1UnderlayVol}  "           # anatomical underlay
+      do_cmd(cmd, opt.verbose, opt.fake)
+
+   }
+
+   # set job status to "finished"
+   set_job_status(pibLogs_dir_fullPath, "beagle_pib_volumetric_visualization_JobStatus", "finished")
+
+   # log a 'done' message to the subject's master logfile, and then write out logfile
+   logger.log_stop_message(progname, opt.keyname, 'PiB', opt.scanDate)
+   logger.save_to_file()
+
+rescue RuntimeError => e
+   STDERR.puts e
+   exit 1
+end  #main()
+

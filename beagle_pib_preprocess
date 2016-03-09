@@ -1,0 +1,289 @@
+#!/usr/bin/env ruby
+
+require 'optparse'
+require 'ostruct'
+require 'pathname'
+require 'fileutils'
+require 'tmpdir'            # needed for Dir::tmpdir
+
+# load ruby gems
+require 'rubygems'
+require 'json'
+require 'pp'
+
+# load external dependencies
+require 'hclab_function_library'
+require 'beagle_function_library'
+require 'beagle_logger_classes'
+
+# start of main script
+begin
+   opt                     = OpenStruct.new{}   # store input options
+   opt.verbose             = false
+   opt.debug               = false
+   opt.fake                = false
+   opt.motion              = false              # should we do motion correction?
+   opt.xfmToNativeMRI      = false              # transform PiB volume to match native MRI
+   opt.xfmToIcbmMRI        = false              # transform PiB volume to match ICBM-152 MRI
+   #
+               # options passed through to minctracc
+   opt.minctraccOpts       = "-lsq6 "           # 3 rotations, 3 translations
+   opt.minctraccOpts       += "-mi    "         # Linear Optimization Objective Functions
+   #                                            #    -mi, -nmi, -xcorr
+   #
+   opt.keyname             = ""
+   opt.scanDate            = ""
+   opt.scanId              = ""                 # this is a derived value
+   opt.settingsFile        = ""
+   #
+   opt.civetScanId         = ""
+
+
+
+   # List of arguments.
+   opts = OptionParser.new do |opts|
+      opts.banner = "Usage: #{$0} [Options]   PiB_volume_in.mnc"
+      opts.separator ""
+      opts.separator "Options:"
+
+      opts.on('-v', '--[no-]verbose', 'Run verbosely') { |v| opt.verbose = v }
+
+      opts.on('-d', '--debug', 'Print pedantic debugging messages') { |d| opt.debug = d }
+
+      opts.on('-f', '--fake', 'Do not actually execute the commands') { |f| opt.fake = f }
+
+      opts.on('-m', '--motion', 'Do inter-frame motion correction') { |m| opt.motion = m }
+
+      opts.on('--xfmToNativeMRI', 'Transform PiB volume to match native MRI') { |xfm1| opt.xfmToNativeMRI = xfm1 }
+
+      opts.on('--xfmToIcbmMRI', 'Transform PiB volume to match ICBM-152 MRI') { |xfm2| opt.xfmToIcbmMRI = xfm2 }
+
+      opts.on('--minctraccOpts minctracc_opts', "Options passed through to minctracc (default is \"-lsq6 -mi\")") do |traccopts|
+         opt.minctraccOpts = traccopts
+         puts "** minctracc options: " + opt.minctraccOpts if opt.verbose
+      end
+
+      opts.on('--keyname subject_keyname', "Anonymizing keyname for this subject") do |keyname|
+         opt.keyname = keyname
+         puts "** keyname: " + opt.keyname if opt.verbose
+      end
+      
+      opts.on('--scanDate scan_date', "Format YYYYMMDD") do |scanDate|
+         opt.scanDate = scanDate
+         puts "** scan date: " + opt.scanDate if opt.verbose
+      end
+
+      opts.on('--civetScanId civet_scan_id', "Format keyname-scanDate") do |civetScanId|
+         opt.civetScanId = civetScanId
+         puts "** Civet scan Id: " + opt.civetScanId if opt.verbose
+      end
+
+      opts.on('--settingsFile aggregated_settings_file', "Fullpath to the aggregated settings file ") do |settingsFile|
+         opt.settingsFile = settingsFile.to_s
+         puts "** Fullpath to the aggregated settings file: " + opt.settingsFile if opt.verbose
+      end
+
+
+     opts.on_tail("-h", "--help", "Show this very helpful help message") do
+         puts opts
+         exit
+      end
+
+   end  # OptionParser
+
+   # run parse!() method in the OptionParser object, passing ARGV
+   # NB: the "!" in parse!() removes the switches from ARGV
+   puts "Before OptionParser start ..." if opt.debug
+   begin
+      opts.parse!(ARGV)
+   rescue Exception => e
+      puts e, "", opts
+      exit
+   end
+
+
+
+   # = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
+   #
+
+   # check for aggregated settings file, then read if all looks OK
+   if ( opt.settingsFile.empty? ) then
+      puts "\n*** Error: Missing option(s) -- Loris aggregated settings file"
+      puts opts
+      exit
+   end
+   #
+   if ( !File.exists?(opt.settingsFile) || !File.file?(opt.settingsFile) ) then
+      puts sprintf("\n!!! Error: The specified Loris aggregated settings [%s] does not exist or is unreadable.", opt.settingsFile)
+      exit
+   end
+   #
+   settings = load_loris_aggregated_settings(opt.settingsFile, verbose=false, debug=false)
+
+   # init associated variables
+   LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
+   CIVET_VERSION = settings['CIVET_VERSION']
+   CIVET_ROOT_DIR = settings['CIVET_ROOT_DIR']
+   CIVET_PREFIX = settings['CIVET_PREFIX'] + '_'
+
+   # set some useful values
+   opt.scanId = opt.keyname + '-' + opt.scanDate
+   keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
+   #
+   pib_dir = 'PiB-' + opt.scanDate
+   pib_dir_fullPath = File.join(keyname_dir_fullPath, pib_dir)
+   pibTmp_dir_fullPath = File.join(pib_dir_fullPath, 'tmp')
+   pibLogs_dir_fullPath = File.join(pib_dir_fullPath, 'logs')
+   pibNative_dir_fullPath = File.join(pib_dir_fullPath, 'native')
+   pibTal_dir_fullPath = File.join(pib_dir_fullPath, 'tal')
+   pibTransforms_dir_fullPath = File.join(pib_dir_fullPath, 'transforms')
+
+
+
+   # * * * * *  START of input argument validation   * * * * *
+   #
+   # keyname has been entered?
+   if ( opt.keyname.empty? or opt.scanDate.empty? ) then
+      puts "\n*** Error: Subject keyname OR PiB scan date is missing"
+      puts opts
+      exit
+   end
+
+   # make sure that the input args were specified and are valid
+   pib_vol_in = ARGV[0]
+
+   puts "Input PiB volume is: #{pib_vol_in}" if opt.debug
+   if ( pib_vol_in.nil? ) then
+      puts "\n*** Error: Please specify a PiB input file name"
+      puts opts
+      exit
+   end
+
+   # input volume is mnc, yes?
+   pib_vol_basename = File.basename(pib_vol_in)
+   pib_vol_extname = File.extname(pib_vol_basename)
+   pib_vol_basename = File.basename(pib_vol_in, pib_vol_extname)
+   if (pib_vol_extname != '.mnc') then
+      puts "\n*** Error: PiB input volume must be in Minc format (.mnc)"
+      puts opts
+      exit
+   end
+
+   # civet-related options have been specified?
+   if ( opt.civetScanId.empty? ) then
+      puts "\n*** Error: Please specify all civet-related options"
+      puts opts
+      exit
+   end
+
+   # check if the temporary working directory exists; if not, create it
+   # Note: if often clear out the tmp dir at end of processing by 
+   #       deleting it -- that's why we need to re-create it
+   if !File.exists?(pibTmp_dir_fullPath) then Dir.mkdir(pibTmp_dir_fullPath) end
+   #
+   # * * * * *  END of input argument validation   * * * * * * * *
+   # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+
+
+   # load subject's master logfile; write a start message
+   progname = 'beagle_pib_preprocess'
+   logger = BeagleLogger.new(opt.keyname, settings, eraseLog=false)
+   logger.log_start_message(progname, opt.keyname, 'PiB', opt.scanDate)
+   logger.log_message(progname, opt.keyname, 'PiB', opt.scanDate, 'civet_version', CIVET_VERSION)
+
+   # now that we've verified that we have a /logs subdir,
+   # ... set processing status to "running"
+   set_job_status(pibLogs_dir_fullPath, "beagle_pib_preprocess_JobStatus", "running")
+
+   
+
+   #
+   # Step 1: Motion Correction
+   # ...This is unlikely to be used, since the new protocol does not collect the early frames
+   # ... which are required for intelligent motion correction.
+   # ... Thus, we put this processing on a switch, which is off by default
+   volume_out = pibNative_dir_fullPath + '/' + opt.keyname + '.mnc'
+   if (opt.motion) then
+      puts "\n** Inter-frame motion correction ..."   if opt.verbose
+      logname = opt.keyname + '_mc.log'
+      cmd = "beagle_pib_motion_correction -v   "
+      cmd << "--logfile=#{pibNative_dir_fullPath}/#{opt.keyname}_mc.log "
+      cmd << "--tmpDir #{pibTmp_dir_fullPath} "
+      cmd << "--keepTmp "
+      cmd << "#{pibNative_dir_fullPath}/#{opt.keyname}.mnc "
+      cmd << "#{pibNative_dir_fullPath}/#{opt.keyname}_mc.mnc "
+      do_cmd(cmd, opt.verbose, opt.fake)
+      volume_out = pibNative_dir_fullPath + '/' + opt.keyname + '_mc.mnc'
+   end
+
+   #
+   # Step 2: Alignment to Anatomy
+   # ... Align the PiB volume to anatomy -- native and stx.
+   puts "\n** Align to Anatomy ..."   if opt.verbose
+   cmd = "beagle_align_to_anatomy_multiFrame -v   "
+   cmd << "--xfmToNativeMRI "
+   cmd << "--xfmToIcbmMRI "
+   cmd << "--minctraccOpts \'#{opt.minctraccOpts}\'  "
+   cmd << "--civetPrefix #{CIVET_PREFIX}  "
+   cmd << "--civetDir #{CIVET_ROOT_DIR} "
+   cmd << "--civetScanId #{opt.civetScanId} "
+   cmd << "--outDir #{pibTmp_dir_fullPath} "
+   cmd << "--tmpDir #{pibTmp_dir_fullPath} "
+   cmd << "#{volume_out}  "
+   cmd << "#{opt.keyname}_pib2mri.xfm "
+   do_cmd(cmd, opt.verbose, opt.fake)
+
+   # copy the products of the alignment step from the temp dir, to the proper subDir
+   #
+   # ---> native
+   puts "\n** Copy alignment results to \"native\" sub-directory ..."   if opt.verbose
+   copy_from = pibTmp_dir_fullPath + '/*mriAligned.mnc'
+   copy_from = Dir.glob(copy_from)
+   copy_to = pibNative_dir_fullPath
+   FileUtils.copy(copy_from, copy_to)
+   #
+   # ---> tal
+   puts "\n** Copy alignment results to \"tal\" sub-directory ..."   if opt.verbose
+   copy_from = pibTmp_dir_fullPath + '/*talAligned.mnc'
+   copy_from = Dir.glob(copy_from)
+   copy_to = pibTal_dir_fullPath
+   FileUtils.copy(copy_from, copy_to)
+   #
+   # ---> transforms
+   puts "\n** Copy alignment results to \"transforms\" sub-directory ..."   if opt.verbose
+   copy_from = pibTmp_dir_fullPath + '/*.xfm'
+   copy_from = Dir.glob(copy_from)
+   copy_to = pibTransforms_dir_fullPath
+   FileUtils.copy(copy_from, copy_to)
+   #
+   # clean up the tmp dir
+   FileUtils.rm Dir.glob("#{pibTmp_dir_fullPath}/*") if !opt.debug
+
+
+   #
+   # Step 3: Blur the spatially normalized volume
+   # ... tried it with a number of blurring FWHMs,
+   # ... but 6-mm provided the best trade-off
+   puts "\n** Blurring  at 6-mm ..."   if opt.verbose
+   cmd = "mincBlur4D -v --clobber --blur 6   "
+   cmd << "--tmpDir #{pibTmp_dir_fullPath}  "
+   cmd << "#{pibTal_dir_fullPath}/#{opt.keyname}_talAligned.mnc   "
+   cmd << "#{pibTal_dir_fullPath}/#{opt.keyname}_talAligned_filtered.mnc    "
+   do_cmd(cmd, opt.verbose, opt.fake)
+   #
+   # clean up the tmp dir
+   FileUtils.rm Dir.glob("#{pibTmp_dir_fullPath}/*") if !opt.debug
+
+
+   # set processing status to "finished"
+   set_job_status(pibLogs_dir_fullPath, "beagle_pib_preprocess_JobStatus", "finished")
+
+   # log a 'done' message to the subject's master logfile, and then write out logfile
+   logger.log_stop_message(progname, opt.keyname, 'PiB', opt.scanDate)
+   logger.save_to_file()
+
+rescue RuntimeError => e
+   STDERR.puts e
+   exit 1
+end  #main()
+

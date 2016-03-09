@@ -1,0 +1,288 @@
+<<echo=FALSE>>=
+# load Loris and rmincIO libraries
+library(lorisStatistics)
+
+# read passed arguments from args file
+# (1) keyname           [ e.g., tofty]
+# (2) rootDir           [ the Loris output root, containing all keyname subdirs]
+# (3) analysis_type     [ VBM, PiB, FDG, THICKNESS, etc ... must match subdir prefix]
+# (4) scan_date         [ YYYYMMDD ... must match subdir suffix]
+# (5) settings_filename [ fullpath to the aggregated settings file]
+#
+source("args_file.txt")
+
+# read the Beagle aggregated settings file
+settings <- read_loris_aggregated_settings(settings_filename, verbose=FALSE)
+#print(settings)
+
+# set PiB reference tissue
+refTissue <- "refCerebGM"
+refTissue_fullname <- "Cerebellar gray matter"
+refTissue_fullname_lc <- "cerebellar gray matter"
+refTissue_fullname_uc <- "Cerebellar Gray Matter"
+refTissue_mask_filename <- paste(keyname, "cerebGMmask_maskedBy_meanPibActivity.mnc", sep="_")
+#cat(sprintf("**Using PiB reference tissue: %s\n",refTissue))
+
+
+# construct useful filename
+pib_subdir <- paste(analysis_type, scan_date, sep="-")
+pib_subdir_fullPath <- file.path(rootDir, keyname, pib_subdir)
+pib_images_subdir_fullPath <- file.path(pib_subdir_fullPath, 'images')
+pib_tal_subdir_fullPath <- file.path(pib_subdir_fullPath, 'tal')
+pib_ratios_subdir_fullPath <- file.path(pib_subdir_fullPath, 'ratios')
+pib_masks_subdir_fullPath <- file.path(pib_subdir_fullPath, 'masks')
+
+
+# read the scan date for the associated anatomy from the "civet_scan_id.txt" file
+# that has cleverly been placed in the modality root dir
+civet_scanId_filename_fullpath <-file.path(pib_subdir_fullPath, "civet_scan_id.txt")
+civet_string <- read.csv(civet_scanId_filename_fullpath, header=FALSE, stringsAsFactors=FALSE)[1,1]
+# get the scan date (the second component) from the civetId (eg. "apatosaurus-20090217")
+civet_scan_date <- unlist(strsplit(civet_string,"-"))[2]
+# now create a pleasing full subdir path
+masks_dirname <- paste('MASKS-', civet_scan_date, sep="")
+masks_subdir_fullPath <- file.path(rootDir, keyname, masks_dirname)
+
+
+# read the 4D PiB volume name ... and then get some stuff
+pib4D_volname <- paste(keyname, "_talAligned.mnc", sep="")
+pib4D_volume_fullPath <- file.path(pib_tal_subdir_fullPath, pib4D_volname)
+pib4D_volume <- mincIO.readMincInfo(pib4D_volume_fullPath)
+nFrames <- mincIO.getProperty(pib4D_volume,"nFrames")
+
+# get the ratios volume name ... might come in handy some day
+# ... hard-code the ratios reference tissue (for now)
+pibRatios_volume <- paste(keyname, "_pibRatios_", refTissue, "_noMask.mnc", sep="")
+pibRatios_volume_fullPath <- file.path(pib_subdir_fullPath, pibRatios_volume)
+#cat(sprintf("**Using PiB ratios volume: %s\n",pibRatios_volume_fullPath))
+
+# read cerebellar GM mask
+cerebellar_gm_mask_filename <- "cerebellum_mask_gm.mnc"
+cerebellar_gm_mask_filename_fullPath <- file.path(masks_subdir_fullPath, cerebellar_gm_mask_filename)
+cerebellar_gm_mask <- mincIO.readVolume(cerebellar_gm_mask_filename_fullPath, volumeType='mask')
+cerebellar_gm_mask_nVoxels <- sum(cerebellar_gm_mask)
+#
+# read the attenuated reference tissue mask --- will be fewer voxels, if reference region is truncated 
+pibAttenuated_refTissue_mask_filename <- refTissue_mask_filename
+pibAttenuated_refTissue_mask_filename_fullPath <- file.path(pib_masks_subdir_fullPath, pibAttenuated_refTissue_mask_filename)
+pibAttenuated_refTissue_mask <- mincIO.readVolume(pibAttenuated_refTissue_mask_filename_fullPath, volumeType='mask')
+pibAttenuated_refTissue_mask_nVoxels <- sum(pibAttenuated_refTissue_mask)
+#
+# subtracts attenuated from full, and count the changed voxels
+deltaVoxels <- cerebellar_gm_mask_nVoxels - pibAttenuated_refTissue_mask_nVoxels
+pctDiff <- (pibAttenuated_refTissue_mask_nVoxels / cerebellar_gm_mask_nVoxels) *100
+
+
+# generate the image filenames used
+img_gmAUCplot_filename = paste(keyname, refTissue, "AUCplot.pdf", sep="_")
+img_gmAUCplot_fullPath = file.path(pib_images_subdir_fullPath, img_gmAUCplot_filename)
+#
+img_averageSurfaceViz_filename = paste(keyname, "pibRatios", refTissue, "averageSurfaceViz.png", sep="_")
+img_averageSurfaceViz_fullPath = file.path(pib_images_subdir_fullPath, img_averageSurfaceViz_filename)
+#
+img_individualSurfaceViz_filename = paste(keyname, "pibRatios", refTissue, "individualSurfaceViz.png", sep="_")
+img_individualSurfaceViz_fullPath = file.path(pib_images_subdir_fullPath, img_individualSurfaceViz_filename)
+#
+img_volumetricViz_filename = paste(keyname, "pibRatios", refTissue, "volumetricViz.pdf", sep="_")
+img_volumetricViz_fullPath = file.path(pib_images_subdir_fullPath, img_volumetricViz_filename)
+#
+img_reference_volumetricViz_filename = paste(keyname, "_mean_talAligned.pdf", sep="")
+img_reference_volumetricViz_fullPath = file.path(pib_images_subdir_fullPath, img_reference_volumetricViz_filename)
+
+@
+
+
+\chapter{Findings: \texttt{PiB-\Sexpr{scan_date}}}
+In this chapter, we present the findings of the amyloid imaging analysis of subject \texttt{\Sexpr{keyname}}, based on the dynamic scan acquired on \texttt{\Sexpr{scan_date}}. Subject \texttt{\Sexpr{keyname}'s} scan resulted in the acquisition of \textbf{\Sexpr{nFrames}} frames.
+
+\section{Validation}
+While there are probably countless things that one could validate, there are a couple of things to check that will likely cover most of the things that could go wrong: (1) in-scanner subject misalignment, and (2) other acquistion-related problems such as early scan termination or injection of a low-potency PiB bolus.
+
+First, let's have a look at Figure~\ref{fig:pib_gm_auc}. This figure shows the time activity curve (TAC) associated with the reference tissue. Specifically, it shows the mean PiB level within the masked reference tissue region over the scanning period. Under protocol 1, there should be 34 points, under protocol 2, there should be 7 points. Also note whether the the activity decreases over time -- it should. An entirely flat curve would suggest that, at the time of scanning, no PiB signal (beyond background) was remaining in the reference tissue. Given our scanning window and our experiences, this would be highly unlikely. This kind of result could be caused by, for example, injection of a low-potency bolus, or scanner-misalignment resulting in the reference region being either partially or completely out of the field of view. Remember, when using relatively small and discrete reference regions (such as the cerebellum) we \emph{really} need the entire reference region to be scanned. A curve with \emph{increasing} signal is totally silly and should never happen.
+
+
+% reference tissue area under the curve (AUC) plot
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=1,trim=3cm 9cm 4cm 9cm,clip=true,width=16cm]{\Sexpr{img_gmAUCplot_fullPath}}
+\end{center}
+\caption[PiB Validation: Reference Tissue AUC]{The PiB time activity curve (TAC) should have either 34 (protocol 1) or 7 (protocol 2) points. Here, \texttt{\Sexpr{keyname}'s} scan shows us \textbf{\Sexpr{nFrames}} frames. The curve should also be sloping downward, indicating a gradual loss of PiB signal within the reference tissue over time. A flat or increasing signal is unexpected, and should be noted.}
+\label{fig:pib_gm_auc}
+\end{figure}
+
+\textbf{When using cerebellar gray matter as reference.} Now, since we \emph{really} need as much of the cerebellum scanned as possible, it was decided to try to check for possible cerebellar truncation both via validation images (discussed next) as well as algorithmically. The algorithm works by applying the cerebellar gray matter mask to the mean PiB intensity image, and looking to see if any of the mask voxels have little or no signal. Any such voxels are assumed to have been outside of the scanner's field of view. So, for subject \texttt{\Sexpr{keyname}}, the algorithm has determined the following: Of the \textbf{\Sexpr{cerebellar_gm_mask_nVoxels}} voxels comprising the cerebellar gray matter mask, \textbf{\Sexpr{pibAttenuated_refTissue_mask_nVoxels}} voxels \textbf{(\Sexpr{sprintf("%.2f",pctDiff)} percent)} were found to have had at least some PiB signal.  If this algorithm suggests significant cerebellar truncation, that truncation should be visible in the following verification images.
+
+
+Figures \ref{fig:pib_ref_volumetric_axial} to \ref{fig:pib_ref_volumetric_coronal} show the mean (over all frames) PiB signal overlayed onto \texttt{\Sexpr{keyname}'s} anatomy. Both volumes are in linearly transformed stereotactic space. The primary purpose of this series of images is to verify alignment.  The PiB overlay, while not perfect, should be pretty much centered over the brain. The reference region should show coverage, although under protocol 2 this might be difficult to see, given that under protocol 2 we are only collecting reltively low-signal frames.  This is particularly true in the case of the assumedly PiB-free cerebellar gray matter, although you should be able to see some signal in the cerebellar white (recall that PiB retention in white matter, even in the absence of amyloid, is relatively long).
+
+
+% PiB volumtric visualization of verification volume
+% ... individual brain in stereotactic space
+% 
+% axial
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=1,trim=0cm 5cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{img_reference_volumetricViz_fullPath}}
+\end{center}
+\caption[PiB Validation: Axial slices]{Mean PiB values across all \Sexpr{nFrames} frames, displayed as axial slices overlayed onto \texttt{\Sexpr{keyname}'s} spatially normalized T1 scan.}
+\label{fig:pib_ref_volumetric_axial}
+\end{figure}
+
+% sagittal
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=2,trim=0cm 9cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{img_reference_volumetricViz_fullPath}}
+\end{center}
+\caption[PiB Validation: Sagittal slices]{Mean PiB values across all \Sexpr{nFrames} frames, displayed as sagittal slices overlayed onto \texttt{\Sexpr{keyname}'s} spatially normalized T1 scan.}
+\label{fig:pib_ref_volumetric_sagittal}
+\end{figure}
+
+% coronal
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=3,trim=0cm 4cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{img_reference_volumetricViz_fullPath}}
+\end{center}
+\caption[PiB Validation: Coronal slices]{Mean PiB values across all \Sexpr{nFrames} frames, displayed as coronal slices overlayed onto \texttt{\Sexpr{keyname}'s} spatially normalized T1 scan.}
+\label{fig:pib_ref_volumetric_coronal}
+\end{figure}
+
+
+
+\clearpage
+%\pagebreak[4]
+\section{PiB Ratios}
+Once \texttt{\Sexpr{keyname}} has been validated, we can have a look at the actual results, starting with the SUVR values presented in Table~\ref{tab:pib_suvr}. As mentioned in section~\ref{pib_suvr_computation}, the SUVR value is a weighted average, with the ROI weights based on ROI size as a proportion of the total volume measured. As seen in Table~\ref{tab:pib_suvr}, we have computed SUVR values across 3 different total volume values: (1) all cerebral gray matter, (2) all cortical gray matter, which should be the same as (1) minus the sub-cortical gray matter, and (3) all neo-cortical gray matter, which is the same as (2) minus the allocortical regions.  As the bulk of the volume is comprised of neocortical areas, the 3 SUVR values are usually similar.  Table~\ref{tab:pib_ratios} provides a breakdown of the ratios, by ROI, comprising the SUVR values. As discussed in section~\ref{pib_preprocesing}, the conventional cut-off for significance is 1.5 times the reference tissue, although this value is best regarded as a useful guideline rather than a firm rule.
+
+
+%
+% do the computations required for display of SUVR and
+% ratio values
+<<echo=FALSE>>=
+library(xtable)
+
+# construct the full pathname to the ratios csv file, 
+# ... and then load it in
+# ... e.g.: p028_pibRatios_refCerebGM_SUVRs_AAL120.csv
+csv_ratios_filename <- paste(keyname, "_pibRatios_", refTissue, "_SUVRs_", settings$AAL_LABELS_VERSION, ".csv", sep="")
+csv_ratios_fullPath <- file.path(pib_ratios_subdir_fullPath, csv_ratios_filename)
+ratios.df <- read.csv(csv_ratios_fullPath, header=TRUE, stringsAsFactors=FALSE)
+
+# remove the first 3 subject ID columns
+ratios.df <- subset(ratios.df, select=Description:suvr)
+
+# create a variable coding hemisphere 
+# ... extract "_L" or "_R" from the end of the LabelName field
+ratios.df$side <- substr(ratios.df$LabelName, 
+         nchar(ratios.df$LabelName) -1, 
+         nchar(ratios.df$LabelName))
+
+# ... and now make it a factor
+ratios.df$side <- factor(ratios.df$side, levels=c("_L","_R"), labels=c("Lh","Rh"))
+
+
+# Prepare the SUVR Summary Table
+#
+# split off the SUVR summary rows (the last 3 rows) and select only those columns that we care about
+suvr.df <- ratios.df[ratios.df$LabelName=='SUVR',]
+suvr.df <- subset(suvr.df,,select=c(Description, nVoxels, suvr))
+
+# change column name from "suvr" to "SUVR"
+names(suvr.df)[match("suvr", names(suvr.df))] <- "SUVR"
+
+# format the SUVR summary table for printing
+suvr.table <- xtable(suvr.df)
+caption(suvr.table) <- "PiB SUVR Values"
+label(suvr.table) <- "tab:pib_suvr"
+digits(suvr.table)[c(4)] <- 3
+align(suvr.table) <- c("l","l","r","r")
+
+
+# Prepare the ROI Ratios Table
+#
+# remove the SUVR summary rows (the last 3 rows)
+ratiosX.df <- ratios.df[ratios.df$LabelName!='SUVR',]
+ratiosX.df <- subset(ratiosX.df,,select=c(Description, side, nVoxels, suvr))
+
+# change column name from "suvr" to "ratio"
+names(ratiosX.df)[match("suvr", names(ratiosX.df))] <- "ratio"
+
+# sort by ratio value
+ratiosX.df <- ratiosX.df[order(ratiosX.df$ratio, decreasing=TRUE),]
+
+# add some extra formatting
+ratios.table <- xtable(ratiosX.df)
+caption(ratios.table) <- "PiB Ratio Values sorted in descending order"
+label(ratios.table) <- "tab:pib_ratios"
+digits(ratios.table)[c(5)] <- 3
+align(ratios.table) <- c("l","l","l","r","r")
+@
+
+<<results=tex, echo=FALSE>>=
+print(suvr.table, floating=TRUE, include.rownames=FALSE, type="latex", caption.placement="top")
+@
+
+\clearpage
+<<results=tex, echo=FALSE>>=
+print(ratios.table, floating=TRUE, include.rownames=FALSE, type="latex", tabular.environment = "longtable", caption.placement="top")
+@
+
+
+Visualizations at the voxel and vertex-level can be seen in in the following figures, with surface visualization of the PiB ratios shown in Figures~\ref{fig:pib_individual_surface} and \ref{fig:pib_average_surface}.  Figure~\ref{fig:pib_individual_surface} shows \texttt{\Sexpr{keyname}'s} PiB ratios projected onto \texttt{\Sexpr{keyname}'s} gray matter surface in stereotactic space. While this image is more reflective of our subject's anatomy, it has the disadvantage of making sulcal PiB very difficult to see.  This disadvantage is addressed by Figure~\ref{fig:pib_average_surface} in which we present the same PiB ratios, but we now project them onto an \emph{averaged} gray matter surface.  Averaging the surfaces has the effect of opening up the sulci a fair bit, permitting us to better visualize sulcal PiB. Of course, we have the potential disadvange that, if the averaged surface becomes too distorted, one could end up projecting sub-cortical PiB ratios onto the surface. So, if you want to be absolutely certain that what you see in the averaged surface reflects reality, then (1) take a look at the individual surface to make sure that the gyral PiB pattern matches, and (2) look at the volumetric images (Figures~\ref{fig:pib_volumetric_axial} to \ref{fig:pib_volumetric_coronal}), as the volumetric images should be considered the "gold standard".
+
+
+
+% PiB cortical surface visualization -- Individual surface
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[trim=0cm 0cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{img_individualSurfaceViz_fullPath}}
+\end{center}
+\caption[Cortical Surface PiB: Individual Surface]{PiB ratios rendered onto  \texttt{\Sexpr{keyname}}'s individual gray matter surface. Both the ratios and the surface are in stereotactic space. Displayed ratios are thresholded at \Sexpr{settings$PIB_SURFACE_VIZ_FLOOR} to \Sexpr{settings$PIB_SURFACE_VIZ_CEILING} (lower values are darker).}
+\label{fig:pib_individual_surface}
+\end{figure}
+
+
+
+% PiB cortical surface visualization -- Average surface
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[trim=0cm 0cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{img_averageSurfaceViz_fullPath}}
+\end{center}
+\caption[Cortical Surface PiB: Averaged Surface]{\texttt{\Sexpr{keyname}}'s PiB ratios rendered onto an averaged gray matter surface. Both the ratios and the surface are in stereotactic space. Displayed ratios are thresholded at \Sexpr{settings$PIB_SURFACE_VIZ_FLOOR} to \Sexpr{settings$PIB_SURFACE_VIZ_CEILING} (lower values are darker).}
+\label{fig:pib_average_surface}
+\end{figure}
+
+
+
+
+% PiB volumtric visualization
+% ... individual brain in stereotactic space
+% 
+% axial
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=1,trim=0cm 5cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{img_volumetricViz_fullPath}}
+\end{center}
+\caption[Volumetric Amyloid: Axial slices]{PiB ratios overlayed onto \texttt{\Sexpr{keyname}'s} spatially normalized T1 scan displayed as axial slices. Note that as the ratio volume is not masked, high ratio values will be seen in the white matter tracts.}
+\label{fig:pib_volumetric_axial}
+\end{figure}
+
+% sagittal
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=2,trim=0cm 9cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{img_volumetricViz_fullPath}}
+\end{center}
+\caption[Volumetric Amyloid: Sagittal slices]{PiB ratios overlayed onto \texttt{\Sexpr{keyname}'s} spatially normalized T1 scan displayed as sagittal slices. Note that as the ratio volume is not masked, high ratio values will be seen in the white matter tracts.}
+\label{fig:pib_volumetric_sagittal}
+\end{figure}
+
+% coronal
+\begin{figure}[h!]
+\begin{center}
+\includegraphics[page=3,trim=0cm 4cm 0cm 2cm,clip=true,width=16cm]{\Sexpr{img_volumetricViz_fullPath}}
+\end{center}
+\caption[Volumetric Amyloid: Coronal slices]{PiB ratios overlayed onto \texttt{\Sexpr{keyname}'s} spatially normalized T1 scan displayed as coronal slices. Note that as the ratio volume is not masked, high ratio values will be seen in the white matter tracts.}
+\label{fig:pib_volumetric_coronal}
+\end{figure}
+
+
+

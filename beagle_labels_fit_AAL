@@ -1,0 +1,392 @@
+#!/usr/bin/env ruby
+# ==============================================================================
+# PURPOSE:
+#    This script is supposed to be executed by it's driver, to perform
+#    a bunch of stuff:
+#     (1) warp population (elderly) label volume into the subject's linear xfm space
+#     (2) write out unmasked and masked versions of the fitted label volume
+#     (3)  visualize the labels on the subject's surface
+# ==============================================================================
+
+require 'optparse'
+require 'ostruct'
+require 'pathname'
+require 'fileutils'
+require 'tmpdir'            # needed for Dir::tmpdir
+
+# load ruby gems
+require 'rubygems'
+require 'json'
+require 'pp'
+
+# load external dependencies
+require 'hclab_function_library'
+require 'beagle_function_library'
+require 'beagle_logger_classes'
+
+
+# start of main script
+begin
+   opt                     = OpenStruct.new{}   # store input options
+   opt.verbose             = false
+   opt.debug               = false
+   opt.fake                = false
+   #
+   opt.keyname             = ""
+   opt.scanId              = ""
+   opt.scanDate            = ""
+   opt.settingsFile        = ""
+
+   # List of arguments.
+   opts = OptionParser.new do |opts|
+      opts.banner = "Usage: #{$0} [Options]"
+      opts.separator ""
+      opts.separator "Options:"
+   
+      opts.on('-v', '--[no-]verbose', 'Run verbosely') { |v| opt.verbose = v }
+   
+      opts.on('-d', '--debug', 'Print pedantic debugging messages') { |d| opt.debug = d }
+   
+      opts.on('-f', '--fake', 'Do not actually execute the commands') { |f| opt.fake = f }
+   
+      opts.on('--keyname subject_keyname', "subject keyname (e.g., trinity)") do |keyname|
+         opt.keyname = keyname.to_s
+         puts "** subject keyname: " + opt.keyname if opt.verbose
+      end
+   
+      opts.on('--scanDate civet_scan_date', "civet scan date (e.g., 20091118)") do |scanDate|
+         opt.scanDate = scanDate.to_s
+         puts "** civet scan date: " + opt.scanDate if opt.verbose
+      end
+   
+      opts.on('--settingsFile settings_file', "Fullpath to the aggregated settings file ") do |settingsFile|
+         opt.settingsFile = settingsFile.to_s
+         puts "** Fullpath to the aggregated settings file: " + opt.settingsFile if opt.verbose
+      end
+   
+      opts.on_tail("-h", "--help", "Show this very helpful help message") do
+         puts opts
+         exit
+      end
+   
+   end  # OptionParser
+   
+   # run parse!() method in the OptionParser object, passing ARGV
+   # NB: the "!" in parse!() removes the switches from ARGV
+   puts "Before OptionParser start ..." if opt.debug
+   begin
+      opts.parse!(ARGV)
+   rescue Exception => e
+      puts e, "", opts
+      exit
+   end
+
+
+   # = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
+   #
+   
+   # load and then initialize aggregated settings
+   if ( opt.settingsFile.empty? ) then
+      puts "\n*** Error: Fullpath to Beagle aggregated settings file must be specified"
+      puts opts
+      exit
+   end
+   settings = load_loris_aggregated_settings(opt.settingsFile, verbose=true, debug=false)
+   pp(settings) if opt.debug
+
+
+   # init selected variables
+   LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
+   CIVET_ROOT_DIR = settings['CIVET_ROOT_DIR']
+   
+   CIVET_VERSION = settings['CIVET_VERSION']
+   CIVET_PREFIX = settings['CIVET_PREFIX'] + '_'
+   CIVET_FINAL_T1_VOLUME_SUFFIX = settings['CIVET_FINAL_T1_VOLUME_SUFFIX']
+   CIVET_PVE_GRAY_VOLUME_SUFFIX = settings['CIVET_PVE_GRAY_VOLUME_SUFFIX']
+   CIVET_SURFACE_GRAY_LEFT_SUFFIX = settings['CIVET_SURFACE_GRAY_LEFT_SUFFIX']
+   CIVET_SURFACE_GRAY_RIGHT_SUFFIX = settings['CIVET_SURFACE_GRAY_RIGHT_SUFFIX']
+
+   AAL_LABELS_VERSION = settings['AAL_LABELS_VERSION']
+   
+   AAL_LABELS_DIR = settings['AAL_LABELS_DIR']
+   AAL_LABELS_VOLUME = settings['AAL_LABELS_VOLUME']
+   AAL_LABELS_VOLUME_FULLPATH = File.join(AAL_LABELS_DIR, AAL_LABELS_VOLUME)
+   puts "AAL labels volume (fullpath): #{AAL_LABELS_VOLUME_FULLPATH}" if opt.debug
+   #
+   AAL_LABELS_SURFACE_VIZ_VOLUME = settings['AAL_LABELS_SURFACE_VIZ_VOLUME']
+   AAL_LABELS_SURFACE_VIZ_VOLUME_FULLPATH = File.join(AAL_LABELS_DIR, AAL_LABELS_SURFACE_VIZ_VOLUME)
+   
+   COLORMAP_DIR = settings['COLORMAP_DIR']
+   AAL_COLORMAP = settings['AAL_COLORMAP']
+   AAL_COLORMAP_FULLPATH = File.join(COLORMAP_DIR, AAL_COLORMAP)
+
+   # define some useful file/path stuff
+   AAL_LABEL_VOLUME_SUFFIX = '_t1_final_' + AAL_LABELS_VERSION + 'Labels.mnc'
+   AAL_LABEL_SURFVIZ_VOLUME_SUFFIX = '_t1_final_' + AAL_LABELS_VERSION + 'Labels_forSurfVizOnly.mnc'
+   AAL_MASKED_LABEL_VOLUME_SUFFIX = '_t1_final_' + AAL_LABELS_VERSION + 'Labels_gmMask.mnc'
+
+   # set some useful values
+   opt.scanId = opt.keyname + '-' + opt.scanDate
+   keyname_dir_fullPath = File.join(LORIS_ROOT_DIR, opt.keyname)
+
+
+
+   # * * * * *  START of input argument validation   * * * * *
+   #
+   # keyname has been entered?
+   if ( opt.keyname.empty? or opt.scanDate.empty? ) then
+      puts "\n*** Error: Subject keyname OR civet scan date is missing"
+      puts opts
+      exit
+   end
+   #
+   # * * * * *  END of input argument validation   * * * * * * * *
+   # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+   
+   
+   
+   # * * * * *  START of non-subject-specific validation   * * * * *
+   #
+   # ensure that the reference volume directory and AAL labels volume exist
+   if ( !File.exists?(AAL_LABELS_DIR) || !File.directory?(AAL_LABELS_DIR) ) then
+      puts sprintf("\n*** Error: Reference directory containing AAL labels [%s] is not valid", AAL_LABELS_DIR)
+      puts opts
+      exit
+   end
+   
+   if ( !File.exists?(AAL_LABELS_VOLUME_FULLPATH) ) then
+      puts sprintf("\n*** Error: AAL labels volume [%s] is not valid", AAL_LABELS_VOLUME_FULLPATH)
+      puts opts
+      exit
+   end
+   #
+   # * * * * *  END of non-subject-specific validation   * * * * *
+   # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+
+
+
+   # * * * * *   START of subject/scan-specific validation   * * * * *
+   #
+   
+   # Now check for some specific Civet files within the Civet directories
+   #
+   # non-linear transformation files
+   # ... there should be two: linear xfm file and nlin grid volume
+   civetId_dir_fullPath = File.join(CIVET_ROOT_DIR, opt.scanId)
+   dir_fullPath = File.join(civetId_dir_fullPath, 'transforms', 'nonlinear')
+   matching_pattern = File.join(dir_fullPath, '*nlfit*')
+   matching_files = Dir.glob(matching_pattern)
+   # 2 files?
+   if ( matching_files.size != 2 ) then
+      puts sprintf("\n!!! Error: Both non-linear fitting files (.xfm and .mnc) not found in %s", dir_fullPath)
+      exit
+   end
+   #
+   # Civet-generated gray matter mask (PVE)
+   filename = CIVET_PREFIX + opt.scanId + CIVET_PVE_GRAY_VOLUME_SUFFIX
+   filename_fullPath = File.join(civetId_dir_fullPath, 'classify', filename)
+   if !File.exists?( filename_fullPath ) then
+      puts sprintf("\n!!! Error: Civet-generated gray matter mask not found: %s", filename_fullPath)
+      exit
+   end
+   #
+   # Civet-generated T1 final in linear stx space
+   filename = CIVET_PREFIX + opt.scanId + CIVET_FINAL_T1_VOLUME_SUFFIX
+   filename_fullPath = File.join(civetId_dir_fullPath, 'final', filename)
+   if !File.exists?( filename_fullPath ) then
+      puts sprintf("\n!!! Error: Civet-generated T1 final volume not found: %s", filename_fullPath)
+      exit
+   end
+   #
+   # * * * * *  END of subject/scan-specific validation   * * * * *
+   # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+
+
+
+   # load subject's master logfile; write a start message
+   progname = 'beagle_labels_fit_AAL'
+   logger = BeagleLogger.new(opt.keyname, settings, eraseLog=false)
+   logger.log_start_message(progname, opt.keyname, 'AAL', opt.scanDate)
+   logger.log_message(progname, opt.keyname, 'AAL', opt.scanDate, 'civet_version', CIVET_VERSION)
+
+
+   # good, now we can set a 'running' status in the logs subdir
+   # NB: add "status" at the end of the script name to keep this
+   #     file from clobbering the log file
+   labels_dir = 'AAL-' + opt.scanDate
+   labels_dir_fullPath = File.join(keyname_dir_fullPath, labels_dir)
+   labelsLogs_dir_fullPath = File.join(labels_dir_fullPath, 'logs')
+   set_job_status(labelsLogs_dir_fullPath, "beagle_labels_fit_AAL_JobStatus", "running")
+   
+   
+   # set up a bunch of filenames that we'll be needing
+   #
+   # ... get the name of the nlin xfm file
+   civet_transforms_dir = File.join(CIVET_ROOT_DIR, opt.scanId, 'transforms', 'nonlinear')
+   matching_pattern = File.join(civet_transforms_dir, '*nlfit*.xfm')
+   matching_files = Dir.glob(matching_pattern)
+   # ... not there?
+   if ( matching_files.size == 0 ) then
+      puts sprintf("\n*** Error: non-linear transform file cannot be found in %s", civet_transforms_dir)
+      exit
+   end
+   # ... too many found??
+   if ( matching_files.size > 1 ) then
+      puts sprintf("\n*** Error: more than one non-linear transform file found in %s", civet_transforms_dir)
+      exit
+   end
+   # ... just right
+   nl_xfm_file = matching_files[0]
+   
+   # use the Civet-generated linear stx volume to define output sampling
+   civet_final_dir = File.join(CIVET_ROOT_DIR, opt.scanId, 'final')
+   like_file = CIVET_PREFIX + opt.scanId + CIVET_FINAL_T1_VOLUME_SUFFIX
+   like_file_fullPath = File.join(civet_final_dir, like_file)
+   
+   # define output file name
+   label_volname = opt.keyname + AAL_LABEL_VOLUME_SUFFIX
+   label_volname_fullPath = File.join(labels_dir_fullPath, label_volname)
+   
+   #
+   # fit AAL labels from icbm-elderly model space to the individual's linear fit
+   # ... do this by applying the inverse of the subject's non-linear transform
+   #
+   cmd = "mincresample   "
+   cmd << "-clobber  "
+   cmd << "-short  -unsigned  "
+   cmd << "-nearest_neighbour  "
+   cmd << "-keep_real_range  "
+   cmd << "-invert_transformation  "
+   cmd << "-transformation  #{nl_xfm_file}  "
+   cmd << "-like #{like_file_fullPath}  "
+   cmd << "#{AAL_LABELS_VOLUME_FULLPATH}  "
+   cmd << "#{label_volname_fullPath}"
+   do_cmd(cmd, opt.verbose, opt.fake)
+   
+   # now let's do it again for the visualization volume
+   label_surfViz_volname = opt.keyname + AAL_LABEL_SURFVIZ_VOLUME_SUFFIX
+   label_surfViz_volname_fullPath = File.join(labels_dir_fullPath, label_surfViz_volname)
+   #  
+   cmd = "mincresample   "
+   cmd << "-clobber  "
+   cmd << "-short  -unsigned  "
+   cmd << "-nearest_neighbour  "
+   cmd << "-keep_real_range  "
+   cmd << "-invert_transformation  "
+   cmd << "-transformation  #{nl_xfm_file}  "
+   cmd << "-like #{like_file_fullPath}  "
+   cmd << "#{AAL_LABELS_SURFACE_VIZ_VOLUME_FULLPATH}  "
+   cmd << "#{label_surfViz_volname_fullPath}"
+   do_cmd(cmd, opt.verbose, opt.fake)
+   
+   
+   # Great.  But now let's apply the gray matter mask to it, in order to get
+   # rid of the labels that are not in gray matter.
+   #
+   civet_classify_dir = File.join(CIVET_ROOT_DIR, opt.scanId, 'classify')
+   pve_mask_file = CIVET_PREFIX + opt.scanId + CIVET_PVE_GRAY_VOLUME_SUFFIX
+   pve_mask_file_fullPath = File.join(civet_classify_dir, pve_mask_file)
+   
+   # create a tmp dir to hold the binarized PVE mask
+   tmp_dir = 'beagle_labels_fit_AAL_' + $$.to_s
+   tmp_dir_fullPath = File.join(Dir.tmpdir, tmp_dir)
+   FileUtils.mkdir_p(tmp_dir_fullPath)
+   bin_mask_file_fullPath = File.join(tmp_dir_fullPath, 'cerebrum_gm_mask.mnc')
+   
+   # build the command line and create the mask
+   cmd = "mincmath -verbose  "
+   cmd << "-clobber  "
+   cmd << "-const2 0.5 1.0  "
+   cmd << "-segment  "
+   cmd << "-unsigned -byte  "
+   cmd << "#{pve_mask_file_fullPath}  "
+   cmd << "#{bin_mask_file_fullPath}"
+   do_cmd(cmd, opt.verbose, opt.fake)
+   
+   # apply the mask to the label volume
+   # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   # define output file name
+   labels_dir = 'AAL-' + opt.scanDate
+   labels_dir_fullPath = File.join(LORIS_ROOT_DIR, opt.keyname, labels_dir)
+   masked_label_volname = opt.keyname + AAL_MASKED_LABEL_VOLUME_SUFFIX
+   masked_label_volname_fullPath = File.join(labels_dir_fullPath, masked_label_volname)
+   cmd = "mincmath -verbose   "
+   cmd << "-clobber  "
+   cmd << "-short  -unsigned  "
+   cmd << "-mult  "
+   cmd << "#{bin_mask_file_fullPath}  "
+   cmd << "#{label_volname_fullPath}  "
+   cmd << "#{masked_label_volname_fullPath}"
+   do_cmd(cmd, opt.verbose, opt.fake)
+   
+   #Done. Now's let's create a surface visualization of the labels
+   #
+   # create the LH surfaces ...
+   #
+   # define the subject's surfaces and the tmp output subdir
+   civet_surfaces_dir = File.join(CIVET_ROOT_DIR, opt.scanId, 'surfaces')
+   surfaceLh = CIVET_PREFIX + opt.scanId + CIVET_SURFACE_GRAY_LEFT_SUFFIX
+   surfaceLh_fullPath = File.join(civet_surfaces_dir, surfaceLh)
+   tmpOutLh_dir = File.join(tmp_dir_fullPath, 'images_Lh')
+   FileUtils.mkdir_p(tmpOutLh_dir)
+   #
+   cmd = "hclab_make_surface_images  -dv  "
+   cmd << "--labels  "
+   cmd << "--usercc  "
+   cmd << "--colorMap=#{AAL_COLORMAP_FULLPATH}  "
+   cmd << "--valueRange=0,127  "
+   cmd << "#{label_surfViz_volname_fullPath}  "
+   cmd << "#{surfaceLh_fullPath}  "
+   cmd << "#{tmpOutLh_dir}"
+   do_cmd(cmd, opt.verbose, opt.fake)
+   
+   # create the RH surfaces ...
+   #
+   # define the subject's surfaces and the tmp output subdir
+   civet_surfaces_dir = File.join(CIVET_ROOT_DIR, opt.scanId, 'surfaces')
+   surfaceRh = CIVET_PREFIX + opt.scanId + CIVET_SURFACE_GRAY_RIGHT_SUFFIX
+   surfaceRh_fullPath = File.join(civet_surfaces_dir, surfaceRh)
+   tmpOutRh_dir = File.join(tmp_dir_fullPath, 'images_Rh')
+   FileUtils.mkdir_p(tmpOutRh_dir)
+   #
+   cmd = "hclab_make_surface_images  -dv  "
+   cmd << "--labels  "
+   cmd << "--usercc  "
+   cmd << "--colorMap=#{AAL_COLORMAP_FULLPATH}  "
+   cmd << "--valueRange=0,127  "
+   cmd << "#{label_surfViz_volname_fullPath}  "
+   cmd << "#{surfaceRh_fullPath}  "
+   cmd << "#{tmpOutRh_dir}"
+   do_cmd(cmd, opt.verbose, opt.fake)
+   
+   # create the actual summary image
+   #
+   # define output file name
+   labels_dir = 'AAL-' + opt.scanDate
+   labels_dir_fullPath = File.join(LORIS_ROOT_DIR, opt.keyname, labels_dir)
+   rendering_filename = opt.keyname + '_surface_rendering_' + AAL_LABELS_VERSION + 'Labels.png'
+   rendering_filename_fullPath = File.join(labels_dir_fullPath, 'images', rendering_filename)
+   cmd = "hclab_make_summary_image -dv  "
+   cmd << "#{tmpOutLh_dir}  "
+   cmd << "#{tmpOutRh_dir}  "
+   cmd << "#{rendering_filename_fullPath}"
+   do_cmd(cmd, opt.verbose, opt.fake)
+   
+   # clean up tmpdir
+   FileUtils.rm_rf(tmp_dir_fullPath)
+   
+   # set job status to done
+   labelsLogs_dir_fullPath = File.join(labels_dir_fullPath, 'logs')
+   set_job_status(labelsLogs_dir_fullPath, "beagle_labels_fit_AAL_JobStatus", "finished")
+
+   # log a 'done' message to the subject's master logfile, and then write out logfile
+   logger.log_stop_message(progname, opt.keyname, 'AAL', opt.scanDate)
+   logger.save_to_file()
+
+
+
+rescue RuntimeError => e
+   STDERR.puts e
+   exit 1
+end  #main()
+

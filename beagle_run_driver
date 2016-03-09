@@ -1,0 +1,344 @@
+#!/usr/bin/env ruby
+# ==============================================================================
+# Purpose:
+#     This is the primary Beagle driver script.
+#  It's purpose is to submit subjects for processing. It differs from
+#  the previous driver system in that the driving is done *by subject*
+#  instaed of *by task*.
+#
+#
+#
+# ==============================================================================
+
+require 'optparse'
+require 'ostruct'
+require 'pathname'
+require 'fileutils'
+require 'tmpdir'            # needed for Dir::tmpdir
+
+# load ruby gems
+require 'rubygems'
+require 'json'
+require 'pp'
+
+# these libs are pointed to by the RUBYLIB env variable
+require 'hclab_function_library'
+require 'beagle_function_library'
+require 'beagle_configFile_classes'
+require 'beagle_build_run_commands'
+
+
+# start of main script
+begin
+   opt                     = OpenStruct.new{}   # store input options
+   opt.verbose             = false
+   opt.debug               = false
+   opt.fake                = false
+   opt.SGE                 = false              # submit to batch queueing system
+   opt.settingsFile        = ""
+   opt.runConfigFile       = ""
+
+
+   # List of arguments.
+   opts = OptionParser.new do |opts|
+      opts.banner = "Usage: #{$0} [Options]"
+      opts.separator ""
+      opts.separator "Options:"
+
+      opts.on('-v', '--[no-]verbose', 'Run verbosely') { |v| opt.verbose = v }
+
+      opts.on('-d', '--debug', 'Print pedantic debugging messages') { |d| opt.debug = d }
+   
+      opts.on('-f', '--fake', 'Fake mode -- do not actually execute') { |f| opt.fake = f }
+      
+      opts.on('--SGE', 'Submit processing to batch queueing system') { |sge| opt.SGE = sge }
+
+      opts.on('--settingsFile beagle_settings_file', "Fullpath to the beagle settings file ") do |settingsFile|
+         opt.settingsFile = settingsFile.to_s
+         puts "** Fullpath to the Beagle settings file: " + opt.settingsFile if opt.verbose
+      end
+
+      opts.on('--runConfigFile run_configuration_file', "Fullpath to the run configuration file ") do |runConfigFile|
+         opt.runConfigFile = runConfigFile.to_s
+         puts "** Fullpath to the run configuration file: " + opt.runConfigFile if opt.verbose
+      end
+
+      opts.on_tail("-h", "--help", "Show this very helpful help message") do
+         puts opts
+         exit
+      end
+
+   end  # OptionParser
+
+   # run parse!() method in the OptionParser object, passing ARGV
+   # NB: the "!" in parse!() removes the switches from ARGV
+   puts "Before OptionParser start ..." if opt.debug
+   begin
+      opts.parse!(ARGV)
+   rescue Exception => e
+      puts e, "", opts
+      exit
+   end
+
+
+   # = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
+   #
+
+
+   #
+   # configuration file processing
+   #
+   # run configuration file has been entered?
+   if ( opt.settingsFile.empty? ) then
+      puts "\n*** Error: Fullpath to Beagle settings file must be specified"
+      puts opts
+      exit
+   end
+
+   # run configuration file has been entered?
+   if ( opt.runConfigFile.empty? ) then
+      puts "\n*** Error: Fullpath to Beagle run configuration file must be specified"
+      puts opts
+      exit
+   end
+
+   # read both the permanent settings file and the run configuration
+   # file, and then merge them
+   # ... load the Loris settings
+   settings = load_loris_settings(opt.settingsFile, verbose=opt.verbose)
+
+   # ... load the Loris run configuration values and merge
+   settingsRunConfig = load_loris_runConfig(opt.runConfigFile, verbose=opt.verbose, debug=opt.debug)
+   settings.merge!(settingsRunConfig)
+
+
+   # init assorted variables
+   #
+   # if debug not set at commandline, then allow settings file to over-ride
+   if ( !opt.debug ) then 
+      opt.debug = settings['LORIS_DEBUG'] == "ON" ? true : false
+   end
+   
+   LORIS_AGGREGATED_SETTINGS_FILE_PREFIX = settings['LORIS_AGGREGATED_SETTINGS_FILE_PREFIX']
+   LORIS_AGGREGATED_SETTINGS_FILE_EXTENSION = settings['LORIS_AGGREGATED_SETTINGS_FILE_EXTENSION']
+   
+   LORIS_RUN_IDENTIFIER = settings['LORIS_RUN_IDENTIFIER']
+   SGE_EXECUTION_HOST = settings['SGE_EXECUTION_HOST']
+   
+   LORIS_LOGFILE_SUFFIX = settings['LORIS_LOGFILE_SUFFIX']
+   LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
+   CIVET_ROOT_DIR = settings['CIVET_ROOT_DIR']
+   CIVET_SUBJECT_INFO = settings['CIVET_SUBJECT_INFO']
+   PIB_SUBJECT_INFO = settings['PIB_SUBJECT_INFO']
+   FDG_SUBJECT_INFO = settings['FDG_SUBJECT_INFO']
+
+
+   #
+   # global validity checks 
+   #
+   # check if the output directory tree exists and is valid
+   if ( !File.exists?(LORIS_ROOT_DIR) || !File.directory?(LORIS_ROOT_DIR) ) then
+      puts sprintf("\n*** Warning: The specified Loris output root directory [%s] does not exist.", LORIS_ROOT_DIR)
+      print sprintf("\n*** Creating [%s] ...", LORIS_ROOT_DIR)
+      FileUtils.mkdir_p( LORIS_ROOT_DIR )
+      puts sprintf("Done.\n")
+   end
+
+   # check if the Civet directory tree exists and is valid
+   # ... let's say that this *must* exist
+   if ( !File.exists?(CIVET_ROOT_DIR) || !File.directory?(CIVET_ROOT_DIR) ) then
+      puts sprintf("\n!!! Error: The specified Civet root directory [%s] does not exist.", CIVET_ROOT_DIR)
+      exit
+   end
+
+
+
+   # write the combined settings into the Loris output root directory
+   # ... write it in JSON format, as we already have experience with JSON
+   filename = LORIS_AGGREGATED_SETTINGS_FILE_PREFIX + '_' + SGE_EXECUTION_HOST + '-' + LORIS_RUN_IDENTIFIER + LORIS_AGGREGATED_SETTINGS_FILE_EXTENSION
+   opt.settingsFile = File.join(LORIS_ROOT_DIR, filename)
+   File.open(opt.settingsFile, 'w') {|f| f.write(JSON.dump(settings)); f.close}
+
+   
+   # Conceptual Overview
+   # 1.  loop over each subject that needs driving
+   # 2.     loop over anatomical scans 
+   #           - these need to be processed prior to any dynamic scan processing
+   # 3.     loop over PiB scans
+   # 4.     loop over FDG scans
+   # 5.     generate summary report
+
+
+   # load the list of subjects to process
+   if settings['SUBJECTS_TO_BE_PROCESSED_FILENAME'].length > 0 then
+      subjects_tbp = TbrSubjects.new(settings['SUBJECTS_TO_BE_PROCESSED_FILENAME'], opt).subjectEntries
+   else
+      subjects_tbp = settings['SUBJECTS_TO_BE_PROCESSED'].split(',')
+   end
+   pp(subjects_tbp) if opt.debug
+
+
+   # loop over all subjects TBP (to be processed), as stated in the run config file
+   subjects_tbp.each{ |keyname|
+   
+
+      # [A] Subject-Level Initialization
+      #
+      # create the top-level subdir for this keyname
+      keyname_dir_fullPath = File.join(LORIS_ROOT_DIR, keyname)
+      if !File.exists?( keyname_dir_fullPath ) then FileUtils.mkdir( keyname_dir_fullPath ) end
+      #
+      # logs & runs are used in this driver, so must be created now
+      keynameLogs_dir_fullPath = File.join(keyname_dir_fullPath, "logs")
+      if !File.exists?( keynameLogs_dir_fullPath ) then FileUtils.mkdir( keynameLogs_dir_fullPath ) end
+      keynameRuns_dir_fullPath = File.join(keyname_dir_fullPath, "runs")
+      if !File.exists?( keynameRuns_dir_fullPath ) then FileUtils.mkdir( keynameRuns_dir_fullPath ) end
+      
+      
+      # print start date/time (declare cmd at this scope)
+      cmd = "date\n"
+
+      # initialization
+      cmd << buildCmd_beagle_run_initialization(keyname, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+
+
+      # [B] Anatomical Stages
+      #
+      # load all subject entries from the Civet config file
+      puts "Processing Civet file #{settings['CIVET_SUBJECT_INFO']}" if opt.verbose
+      civet_subj_details = CivetSubjectDetails.new(settings['CIVET_SUBJECT_INFO'], opt)
+      pp(civet_subj_details) if opt.debug
+      
+      # loop over all Civet entries for this subject 
+      # ... keyname must be passed as an array
+      scans = civet_subj_details.select_entries_by_keyname([keyname])
+      
+      # we must have at least one entry, else error
+      if ( scans.length < 1 ) then
+         puts sprintf("\n!!! Error: To-be-run subject [%s] does not have any entries in the Civet configuration file", keyname)
+         puts "Correct and re-run"
+         exit
+      end
+            
+      scans.each{ |scan_item|
+      
+         # initialization
+         cmd << buildCmd_beagle_anatomical_initialization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+         
+         # Labels
+         cmd << buildCmd_beagle_labels_fit_AAL(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+         
+         # Masks
+         cmd << buildCmd_beagle_masks_generate_from_labels(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+         
+         # VBM
+         cmd << buildCmd_beagle_vbm_compute_individ_VBM(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+         cmd << buildCmd_beagle_vbm_quantification(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+         cmd << buildCmd_beagle_vbm_volumetric_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+         
+         # CTA
+         cmd << buildCmd_beagle_thickness_compute_zscores(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+         cmd << buildCmd_beagle_thickness_extract_surface_labels(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+         cmd << buildCmd_beagle_thickness_compute_roi_statistics(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+         cmd << buildCmd_beagle_thickness_surface_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+
+      }  # subject scans loop
+      
+      
+      # [C]  PiB Stages
+      #
+      # load all subject entries from the PiB config file
+      puts "Processing PiB file #{settings['PIB_SUBJECT_INFO']}" if opt.verbose
+      pib_subj_details = PiBSubjectDetails.new(settings['PIB_SUBJECT_INFO'], opt)
+      pp(pib_subj_details) if opt.debug
+      
+      # loop over all PiB entries for this subject 
+      # ... keyname must be passed as an array
+      scans = pib_subj_details.select_entries_by_keyname([keyname])
+      
+      # any scans to process?
+      if ( scans.length < 1 ) then
+         puts sprintf("\n*** Info: To-be-run subject [%s] does not have any entries in the PiB configuration file", keyname)
+      else
+         scans.each{ |scan_item|
+            cmd << buildCmd_beagle_pib_initialization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            cmd << buildCmd_beagle_pib_convert_ecat2mnc(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            cmd << buildCmd_beagle_pib_preprocess(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            cmd << buildCmd_beagle_pib_generate_masks(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            cmd << buildCmd_beagle_pib_preprocess_verification(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            cmd << buildCmd_beagle_pib_compute_ratios(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            cmd << buildCmd_beagle_pib_compute_SUVR(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            cmd << buildCmd_beagle_pib_volumetric_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            cmd << buildCmd_beagle_pib_surface_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+         }  # subject scans loop
+      end
+      
+      
+      #
+      # [D] FDG Stages
+      #
+      # load all subject entries from the FDG config file
+      puts "Processing FDG file #{settings['FDG_SUBJECT_INFO']}"
+      fdg_subj_details = FdgSubjectDetails.new(settings['FDG_SUBJECT_INFO'], opt)
+      pp(fdg_subj_details) if opt.debug
+      
+      # loop over all Civet entries for this subject 
+      # ... keyname must be passed as an array
+      scans = fdg_subj_details.select_entries_by_keyname([keyname])
+      
+      # any scans to process?
+      if ( scans.length < 1 ) then
+         puts sprintf("\n*** Info: To-be-run subject [%s] does not have any entries in the FDG configuration file", keyname)
+      else
+         scans.each{ |scan_item|
+            cmd << buildCmd_beagle_fdg_initialization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            cmd << buildCmd_beagle_fdg_convert_native2mnc(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            cmd << buildCmd_beagle_fdg_preprocess(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            cmd << buildCmd_beagle_fdg_preprocess_verification(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            cmd << buildCmd_beagle_fdg_compute_ratios(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            cmd << buildCmd_beagle_fdg_compute_SUVR(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            cmd << buildCmd_beagle_fdg_volumetric_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            cmd << buildCmd_beagle_fdg_surface_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+         }  # subject scans loop
+      end
+      
+      
+      # [D]  Report generation
+      cmd << buildCmd_beagle_make_summary_report(keyname, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+
+      # print finish date/time
+      cmd << "date\n"
+      
+      
+      # write out commands to the subject's root directory
+      driverFilename =  'driverFile_' + 'run-' + LORIS_RUN_IDENTIFIER + '.sh'
+      driverFilename_fullpath = File.join(keynameRuns_dir_fullPath, driverFilename)
+      File.open(driverFilename_fullpath, 'w') {|f| f.write(cmd); f.close}
+      # set 'owner' execute bit on driver file ('rwx r-- r--')
+      File.chmod(0744, driverFilename_fullpath)
+      
+      # if submitting to SGE, we need to append some extra stuff
+      filename = 'run-' + LORIS_RUN_IDENTIFIER + '.log'
+      logfile_fullPath = File.join(keynameLogs_dir_fullPath, filename)
+      if ( opt.SGE ) then
+         cmdSge = "qsub "
+         cmdSge << "-S /bin/bash "
+         cmdSge << "-b y "
+         cmdSge << "-cwd "
+         cmdSge << "-j y "
+         cmdSge << "-V "
+         cmdSge << "-N #{keyname}  "
+         cmdSge << "-o #{logfile_fullPath}    "
+         cmdSge << "-l hostname=#{settings['SGE_EXECUTION_HOST']}   "
+         cmdSge << "#{driverFilename_fullpath}"
+         do_cmd(cmdSge, opt.verbose, opt.fake)
+     end
+   
+   }  # subjects_tbp loop
+
+
+rescue RuntimeError => e
+   STDERR.puts e
+   exit 1
+end  #main()
+

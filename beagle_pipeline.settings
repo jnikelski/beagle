@@ -1,0 +1,297 @@
+# = = = = = = = = = = = = = = = = = = = = = = = == = = = = = = = = = = = = = =
+#
+# Loris pipeline configuration file
+#
+#    This file includes a number of settings which are either somewhat 
+# useful or critically important for the correct functioning of the
+# HCLab Loris processing pipeline.  Personally, I wouldn't change any of
+# these settings unless I really, really, really knew what I was doing.
+# If you don't know what you're doing, then please contact Jim Nikelski,
+# since he wrote this code ... and is therefore likely to know how to
+# modify these parameters safely.
+#
+# NOTE:
+#     This file is read by 2 separate read routines - one written
+#     in Ruby, and the other written in R. Before you even start
+#     considering changing the format of this file, make sure that
+#     the modified format is readable by the read routines in
+#     *both* languages.
+#
+#  YET ANOTHER NOTE:
+#     OK, I just got bitten by this. Make sure *not* to use any
+#     extra spaces in any of the assignment statements. The parser
+#     barfs if you do this. 
+#
+# = = = = = = = = = = = = = = = = = = = = = = = == = = = = = = = = = = = = = =
+#
+# number of settings in this file (INCLUDING this value)
+# ... this is used to validate the file structure 
+NBR_SETTINGS="101"
+
+
+
+# debug switch: ON or OFF
+# ... turning DEBUG ON makes Loris spit out extra messages
+LORIS_DEBUG="OFF"
+
+# logfile name suffix (e.g. kanga_loris_logfile.log)
+LORIS_LOGFILE_PREFIX="logFile"
+LORIS_LOGFILE_EXTENSION=".json"
+
+# aggregated settings file (stored in subject's ouput root dir)
+LORIS_AGGREGATED_SETTINGS_FILE_PREFIX="loris_aggregated_settings"
+LORIS_AGGREGATED_SETTINGS_FILE_EXTENSION=".json"
+
+
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+# Loris (general) options (Use absolute paths only)
+#
+# ... what is our verion of Loris? 
+LORIS_VERSION="14.03.20"
+#
+#
+# ... define where to find the various subject info files
+CONFIGURED_SUBJECTS_FILE="/home/jnikelski/localData/JNLab/beagle/subject_info/subjects.csv"
+CIVET_SUBJECT_INFO="/home/jnikelski/localData/JNLab/beagle/subject_info/civet_subject_info.csv"
+PIB_SUBJECT_INFO="/home/jnikelski/localData/JNLab/beagle/subject_info/pib_subject_info.csv"
+FDG_SUBJECT_INFO="/home/jnikelski/localData/JNLab/beagle/subject_info/fdg_subject_info.csv"
+
+
+
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+# Civet-related options (Use absolute paths only)
+#
+
+# Civet version that was used to generate the anatomically-derived volumes?
+CIVET_VERSION="1.1.11"
+
+# location (fullpath) of Civet output root directory
+CIVET_ROOT_DIR="/data/raid01/civetData/civetVersion_1.1.11/scans"
+
+# Civet filenaming prefix
+CIVET_PREFIX="HCLab"
+
+# tissue classification tissue types
+CIVET_TISSUE_TYPE_BACKGROUND="0"
+CIVET_TISSUE_TYPE_CSF="1"
+CIVET_TISSUE_TYPE_GM="2"
+CIVET_TISSUE_TYPE_WM="3"
+
+# assorted product suffixes
+#
+# final subdir
+CIVET_FINAL_T1_VOLUME_SUFFIX="_t1_final.mnc"
+
+# surface-related info
+CIVET_SURFACE_NO_OF_VERTICES_LEFT="40962"
+CIVET_SURFACE_NO_OF_VERTICES_RIGHT="40962"
+CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN="81924"
+
+# surfaces subdir
+CIVET_CLASSIFY_DIR="surfaces"
+CIVET_SURFACE_GRAY_LEFT_SUFFIX="_gray_surface_left_81920.obj"
+CIVET_SURFACE_GRAY_RIGHT_SUFFIX="_gray_surface_right_81920.obj"
+CIVET_SURFACE_RSL_GRAY_LEFT_SUFFIX="_gray_surface_rsl_left_81920.obj"
+CIVET_SURFACE_RSL_GRAY_RIGHT_SUFFIX="_gray_surface_rsl_right_81920.obj"
+#
+CIVET_SURFACE_MID_LEFT_SUFFIX="_mid_surface_left_81920.obj"
+CIVET_SURFACE_MID_RIGHT_SUFFIX="_mid_surface_right_81920.obj"
+CIVET_SURFACE_RSL_MID_LEFT_SUFFIX="_mid_surface_rsl_left_81920.obj"
+CIVET_SURFACE_RSL_MID_RIGHT_SUFFIX="_mid_surface_rsl_right_81920.obj"
+#
+CIVET_SURFACE_WHITE_LEFT_SUFFIX="_white_surface_left_81920.obj"
+CIVET_SURFACE_WHITE_RIGHT_SUFFIX="_white_surface_right_81920.obj"
+CIVET_SURFACE_RSL_WHITE_LEFT_SUFFIX="_white_surface_rsl_left_81920.obj"
+CIVET_SURFACE_RSL_WHITE_RIGHT_SUFFIX="_white_surface_rsl_right_81920.obj"
+#
+# classify subdir
+CIVET_CLASSIFY_DIR="classify"
+CIVET_PVE_GRAY_VOLUME_SUFFIX="_pve_gm.mnc"
+CIVET_PVE_WHITE_VOLUME_SUFFIX="_pve_wm.mnc"
+CIVET_PVE_CSF_VOLUME_SUFFIX="_pve_csf.mnc"
+CIVET_CLASSIFY_DISCRETE_VOLUME_SUFFIX="_pve_classify.mnc"
+#
+# native thickness values subdir
+CIVET_THICKNESS_DIR="thickness"
+CIVET_THICKNESS_VALUES_NORSL_LEFT_SUFFIX="_native_rms_tlink_20mm_left.txt"
+CIVET_THICKNESS_VALUES_NORSL_RIGHT_SUFFIX="_native_rms_tlink_20mm_right.txt"
+CIVET_THICKNESS_VALUES_RSL_LEFT_SUFFIX="_native_rms_rsl_tlink_20mm_left.txt"
+CIVET_THICKNESS_VALUES_RSL_RIGHT_SUFFIX="_native_rms_rsl_tlink_20mm_right.txt"
+
+
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+# PiB-related options (Use absolute paths only)
+# 
+# ... where might I find the PiB native scan volumes?
+PIB_ECAT_DIR="/home/jnikelski/localData/JNLab/pib"
+#
+# display thresholds for mincthumbs
+# ... note that I'm using a rather higher ceiling, since the upper part
+# ... of the mincthumbs colormap is white ... which makes it difficult
+# ... to see on an MRI. Thus, I do not want to reach the top end of
+# ... the colormap, and therefore the higher ceiling.
+PIB_VOLUMETRIC_VIZ_FLOOR="1.5"
+PIB_VOLUMETRIC_VIZ_CEILING="3.5"
+#
+PIB_SURFACE_VIZ_FLOOR="1.5"
+PIB_SURFACE_VIZ_CEILING="2.5"
+
+# ... filenaming prefix
+PIB_FILENAMING_PREFIX="HCLab"
+
+# cerebellar threshold percentage; less than yields error message, else warning
+PIB_CEREB_THOLD_PCT="75.0"
+
+
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+# FDG-related options (Use absolute paths only)
+# 
+# ... where might I find the FDG native scan volumes?
+FDG_NATIVE_DIR="/home/jnikelski/localData/JNLab/fdg"
+#
+# values are displayed as 
+# % decreases relative to the cerebellum
+# ... let's show all vertices/voxels with => 20% decrease in FDG
+# ... make the upper bound < 100% so we can see gradient in the color map
+#
+FDG_VOLUMETRIC_VIZ_FLOOR="20.0"
+FDG_VOLUMETRIC_VIZ_CEILING="80.0"
+
+#
+FDG_SURFACE_VIZ_FLOOR="20.0"
+FDG_SURFACE_VIZ_CEILING="80.0"
+
+# ... filenaming prefix
+FDG_FILENAMING_PREFIX="HCLab"
+
+# cerebellar threshold percentage; less than yields error message, else warning
+FDG_CEREB_THOLD_PCT="75.0"
+
+
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+# VBM-related options (Use absolute paths only)
+# 
+# ... volumetric visualization absolute min and max values
+# ... Notes: 
+# (1) Threshold options (one-tailed):
+#       z=-1.64 (p=0.05)
+#       z=-2.33 (p=0.01)
+#       z=-3.09 (p=0.001)
+#       z=-3.71 (p=0.0001)
+#
+# (2) given that we are looking for atrophy, both
+# ...            of these values will be negative.
+VBM_VOLUMETRIC_VIZ_FLOOR="-2.33"
+VBM_VOLUMETRIC_VIZ_CEILING="-8.00"
+VBM_ZSCORE_THRESHOLD="-2.33"
+
+VBM_GM_ZSCORE_VOLUME_SUFFIX="_gmVBM_zScores"
+VBM_WM_ZSCORE_VOLUME_SUFFIX="_wmVBM_zScores"
+
+
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+# Cortical Thickness-related options (Use absolute paths only)
+# 
+#
+# Cortical Thickness options (Use absolute paths only)
+#
+# given that we are looking for atrophy,
+# ... all of these values will be negative.
+THICKNESS_SURFACE_VIZ_REL_POS="-2.33"
+THICKNESS_SURFACE_VIZ_REL_NEG="-8.00"
+THICKNESS_ZSCORE_THRESHOLD="-2.33"
+
+
+
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+# Model-related options (Use absolute paths only)
+# 
+#
+# VBM Model and Template options (Use absolute paths only)
+# ... define model containing the averaged gm/wm  volumes
+ELDERLY_MODEL_DIR="/data/raid01/hclabEnv/models/model_ldiAdni200"
+ELDERLY_MODEL_NAME_ROOT="ldiAdni200"
+ELDERLY_MODEL_NUMBER_OF_SUBJECTS="200"
+#
+# models probability map mean/stdev volume suffixes
+ELDERLY_MODEL_PMAP_MEAN_GRAY_VOLUME="ldiAdni200_gm_mean.mnc"
+ELDERLY_MODEL_PMAP_STDEV_GRAY_VOLUME="ldiAdni200_gm_stdev.mnc"
+#
+ELDERLY_MODEL_PMAP_MEAN_WHITE_VOLUME="ldiAdni200_wm_mean.mnc"
+ELDERLY_MODEL_PMAP_STDEV_WHITE_VOLUME="ldiAdni200_wm_stdev.mnc"
+#
+ELDERLY_MODEL_PMAP_MEAN_CSF_VOLUME="ldiAdni200_csf_mean.mnc"
+ELDERLY_MODEL_PMAP_STDEV_CSF_VOLUME="ldiAdni200_csf_stdev.mnc"
+#
+ELDERLY_MODEL_NATIVE_MEAN_THICKNESS_FILE="ldiAdni200_thickness_mean.txt"
+ELDERLY_MODEL_NATIVE_STDEV_THICKNESS_FILE="ldiAdni200_thickness_stdev.txt"
+#
+ELDERLY_MODEL_CLASSIFY_DISCRETE_VOLUME="ldiAdni200_classify.mnc"
+
+
+#
+ADNI_SURFACES_DIR="/data/raid01/hclabEnv/models/model_adni32"
+ADNI_LH_GM_SURFACE="adni32_gray_surface_left.obj"
+ADNI_RH_GM_SURFACE="adni32_gray_surface_right.obj"
+ADNI_LH_MID_SURFACE="adni32_mid_surface_left.obj"
+ADNI_RH_MID_SURFACE="adni32_mid_surface_right.obj"
+
+
+
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+# Labelling-related options (Use absolute paths only)
+#
+# version string to be used in filenames
+AAL_LABELS_VERSION="AAL120"
+# file showing correspondence between label numbers and names
+AAL_LABELS_NAMES="AAL120_labels.csv"
+# location and name of label volume
+AAL_LABELS_DIR="/data/raid01/hclabEnv/models/model_ldiAdni200"
+#
+# ... label volume to be used for PiB/FDG quantification
+# ... this volume will be warped into the subject's linear ICBM space
+AAL_LABELS_VOLUME="ldiAdni200_AALlabels_50pctBgHandicap.mnc"
+# ... unwarped label volume for VBM quantification
+AAL_LABELS_VBM_VOLUME="ldiAdni200_AALlabels_50pctBgHandicap.mnc"
+# ... label volume used for surface visualization only
+AAL_LABELS_SURFACE_VIZ_VOLUME="ldiAdni200_AALlabels_99pctBgHandicap.mnc"
+
+   # define some useful file/path stuff
+
+
+
+
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+# Color map-related options (Use absolute paths only)
+#
+COLORMAP_DIR="/data/raid01/hclabEnv/color_maps"
+AAL_COLORMAP="lookupMap_hclab_AAL120_0_127_v01.ccd"
+
+
+
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+# Sun Grid Engine (SGE) options (Use absolute paths only)
+#
+# ... where to find the driver scripts?
+SCRIPT_DIR="/data/raid01/software/beagle/beagle_14.04.16"
+#SCRIPT_DIR="/home/jnikelski/devel/beagle-git/main"
+
+
+
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+# Reporting-related options (Use absolute paths only)
+#
+LORIS_RESOURCE_DIR="/data/raid01/software/beagle/beagle_14.04.16/resources/"
+#LORIS_RESOURCE_DIR="/home/jnikelski/devel/beagle-git/main/resources/"
+RNW_TEMPLATE_PIB="beagle_pib_summary_report.Rnw"
+RNW_TEMPLATE_FDG="beagle_fdg_summary_report.Rnw"
+RNW_TEMPLATE_VBM="beagle_vbm_summary_report.Rnw"
+RNW_TEMPLATE_LABELS="beagle_labels_summary_report.Rnw"
+RNW_TEMPLATE_THICKNESS="beagle_thickness_summary_report.Rnw"
+RNW_TEMPLATE_INTRO="beagle_intro_summary_report.Rnw"
+RNW_TEMPLATE_METHODS="beagle_methods_summary_report.Rnw"
+RNW_TEMPLATE_SUBJECT_REPORT="beagle_summary_report.Rnw"
+
+
+
+

@@ -1,0 +1,294 @@
+#!/usr/bin/env ruby
+# ==============================================================================
+# Purpose:
+#     Use AAL labelled volume to create various masks.
+#
+#
+#
+#
+#
+# ==============================================================================
+
+
+require 'optparse'
+require 'ostruct'
+require 'pathname'
+require 'fileutils'
+require 'tmpdir'            # needed for Dir::tmpdir
+
+# load ruby gems
+require 'rubygems'
+require 'json'
+require 'pp'
+
+# load external dependencies
+require 'hclab_function_library'
+require 'beagle_function_library'
+require 'beagle_logger_classes'
+
+# define some constants with global scope
+#
+# define the range of AAL label values comprising the cerebellum
+AAL_CEREBELLUM_RANGE = 91,116
+
+
+
+# start of main script
+begin
+   opt                     = OpenStruct.new{}  # store input options
+   opt.verbose             = false
+   opt.debug               = false
+   opt.fake                = false
+   opt.keyname             = ""          # subject keyname
+   opt.scanId              = ""          # civet subdirectory name for a given scan
+   opt.scanDate            = ""
+   opt.aalVolname          = ""          # input subject's AAL labelled volume
+   opt.classifyVolname     = ""          # input subject's tissue classification volume
+   opt.logDir              = ""          # logfile/status directory
+   opt.logfile             = ""          # logfile
+   opt.tmpDir              = ""          # work directory
+   opt.settingsFile        = ""
+
+   # List of arguments.
+   opts = OptionParser.new do |opts|
+      opts.banner = "Usage: #{$0} [Options] "
+      opts.separator ""
+      opts.separator "Options:"
+   
+      opts.on('-v', '--[no-]verbose', 'Run verbosely') { |v| opt.verbose = v }
+   
+      opts.on('-d', '--debug', 'Print pedantic debugging messages') { |d| opt.debug = d }
+   
+      opts.on('-f', '--fake', 'Do not actually execute the commands') { |f| opt.fake = f }
+   
+      opts.on('--keyname subject_keyname', "subject keyname") do |keyname|
+         opt.keyname = keyname.to_s
+         puts "** Subject keyname: " + opt.keyname if opt.verbose
+      end
+      
+      opts.on('--scanDate civet_scan_date', "civet scan date (e.g., 20091118)") do |scanDate|
+         opt.scanDate = scanDate.to_s
+         puts "** civet scan date: " + opt.scanDate if opt.verbose
+      end
+         
+      opts.on('--labelledAALvolume aal_label_volume', "subject's AAL labelled volume") do |aalVol|
+         opt.aalVolname = aalVol.to_s
+         puts "** Subject input AAL label volume: " + opt.aalVolname if opt.verbose
+      end
+      
+      opts.on('--classifyVolume aal_label_volume', "subject's tissue classification volume") do |classVol|
+         opt.classifyVolname = classVol.to_s
+         puts "** Subject input tissue classification volume: " + opt.classifyVolname if opt.verbose
+      end
+      
+      opts.on('--tmpDir tmpDir', "Temp work directory (default is system tmp dir)") do |x|
+         opt.tmpDir = x.to_s
+         puts "** tmpDir: " + opt.tmpDir if opt.verbose
+      end
+   
+      opts.on('--logDir logfile_directory', "Logfile directory") do |lfD|
+         opt.logDir = lfD.to_s
+         puts "** logfile directory: " + opt.logDir if opt.verbose
+      end
+
+      opts.on('--settingsFile aggregated_settings_file', "Fullpath to the aggregated settings file ") do |settingsFile|
+         opt.settingsFile = settingsFile.to_s
+         puts "** Fullpath to the aggregated settings file: " + opt.settingsFile if opt.verbose
+      end
+   
+      opts.on_tail("-h", "--help", "Show this very helpful help message") do
+         puts opts
+         exit
+      end
+   
+   end  # OptionParser
+
+   # run parse!() method in the OptionParser object, passing ARGV
+   # NB: the "!" in parse!() removes the switches from ARGV
+   puts "Before OptionParser start ..." if opt.debug
+   begin
+      opts.parse!(ARGV)
+   rescue Exception => e
+      puts e, "", opts
+      exit
+   end
+
+
+
+   # = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
+   #
+
+   # load and then initialize aggregated settings
+   if ( opt.settingsFile.empty? ) then
+      puts "\n*** Error: Fullpath to Beagle aggregated settings file must be specified"
+      puts opts
+      exit
+   end
+   settings = load_loris_aggregated_settings(opt.settingsFile, verbose=true, debug=false)
+   pp(settings) if opt.debug
+
+
+   # init selected variables
+   LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
+   CIVET_ROOT_DIR = settings['CIVET_ROOT_DIR']
+   
+   CIVET_VERSION = settings['CIVET_VERSION']
+   CIVET_PREFIX = settings['CIVET_PREFIX'] + '_'
+   CIVET_TISSUE_TYPE_BACKGROUND = settings['CIVET_TISSUE_TYPE_BACKGROUND']
+   CIVET_TISSUE_TYPE_CSF = settings['CIVET_TISSUE_TYPE_CSF']
+   CIVET_TISSUE_TYPE_GM = settings['CIVET_TISSUE_TYPE_GM']
+   CIVET_TISSUE_TYPE_WM = settings['CIVET_TISSUE_TYPE_WM']
+   CIVET_CLASSIFY_DISCRETE_VOLUME_SUFFIX = settings['CIVET_CLASSIFY_DISCRETE_VOLUME_SUFFIX']
+
+   LORIS_AAL_LABELLED_VOLUME_SUFFIX = '_t1_final_AAL120Labels.mnc'
+
+
+   # set some useful paths/values
+   opt.scanId = opt.keyname + '-' + opt.scanDate
+   
+   keyname_dir_fullPath = File.join(LORIS_ROOT_DIR, opt.keyname)
+   
+   masks_dir = 'MASKS-' + opt.scanDate
+   masks_dir_fullPath = File.join(keyname_dir_fullPath, masks_dir)
+   masksLogs_dir_fullPath = File.join(masks_dir_fullPath, 'logs')
+
+
+
+   # * * * * *  START of input argument validation   * * * * *
+   #
+   # keyname has been entered?
+   if ( opt.keyname.empty? or opt.scanDate.empty? ) then
+      puts "\n*** Error: Subject keyname OR civet scan date is missing"
+      puts opts
+      exit
+   end
+ 
+   # check if the temporary working directory exists; if not, create it
+   if (opt.tmpDir.empty?) then
+      opt.tmpDir = File.join(Dir::tmpdir, Process.pid.to_s)
+   end
+   if !File.exists?(opt.tmpDir) then Dir.mkdir(opt.tmpDir) end
+   
+   # ensure that both input volumes have been specified
+   if ( !File.exists?(opt.aalVolname) or !File.exists?(opt.classifyVolname) ) then
+      puts "\n!!! Please specify both input volumes (label and tissue classification)"
+      puts opts
+      exit
+   end
+
+    #
+   # * * * * *  END of input argument validation   * * * * * * * *
+   # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+   
+
+
+   # * * * * *   START of subject/scan-specific validation   * * * * *
+   #
+   # check for Civet-generated classify volume 
+   civetId_dir_fullPath = File.join(CIVET_ROOT_DIR, opt.scanId)
+   filename = CIVET_PREFIX + opt.scanId + CIVET_CLASSIFY_DISCRETE_VOLUME_SUFFIX
+   filename_fullPath = File.join(civetId_dir_fullPath, 'classify', filename)
+   if !File.exists?( filename_fullPath ) then
+      puts sprintf("\n!!! Error: Civet-generated tissue classification volume not found: %s", filename_fullPath)
+      exit
+   end
+   
+   # make sure that we have already created an AAL label volume for this subject
+   filename = opt.keyname + LORIS_AAL_LABELLED_VOLUME_SUFFIX
+   labels_dir = 'AAL-' + opt.scanDate
+   filename_fullPath = File.join(keyname_dir_fullPath, labels_dir, filename)
+   if !File.exists?( filename_fullPath ) then
+      puts sprintf("\n!!! Error: Beagle-generated AAL label volume not found: %s", filename_fullPath)
+      exit
+   end
+   #
+   # * * * * *  END of subject/scan-specific validation   * * * * *
+   # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+
+
+
+   # load subject's master logfile; write a start message
+   progname = 'beagle_masks_generate_from_labels'
+   logger = BeagleLogger.new(opt.keyname, settings, eraseLog=false)
+   logger.log_start_message(progname, opt.keyname, 'MASKS', opt.scanDate)
+   logger.log_message(progname, opt.keyname, 'MASKS', opt.scanDate, 'civet_version', CIVET_VERSION)
+
+
+   # good, now we can set a 'running' status in the logs subdir
+   # NB: add "status" at the end of the script name to keep this
+   #     file from clobbering the log file
+   set_job_status(masksLogs_dir_fullPath, "beagle_masks_generate_from_labels_JobStatus", "running")
+
+
+   # start by creating a bunch of mask volumes from the 
+   # final (discrete, non-pve) tissue classification volume
+   #
+   # create a gray matter mask from the final classify volume
+   cmd = "mincmath -clobber -verbose "
+   cmd << "-const2 #{CIVET_TISSUE_TYPE_GM} #{CIVET_TISSUE_TYPE_GM} "
+   cmd << "-segment "
+   cmd << "#{opt.classifyVolname} "
+   cmd << "#{masks_dir_fullPath}/wholeBrain_gray_matter_mask.mnc "
+   do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
+
+   # create a white matter mask from the final classify volume
+   cmd = "mincmath -clobber -verbose "
+   cmd << "-const2 #{CIVET_TISSUE_TYPE_WM} #{CIVET_TISSUE_TYPE_WM} "
+   cmd << "-segment "
+   cmd << "#{opt.classifyVolname} "
+   cmd << "#{masks_dir_fullPath}/wholeBrain_white_matter_mask.mnc "
+   do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
+
+   # create a CSF mask from the final classify volume
+   cmd = "mincmath -clobber -verbose "
+   cmd << "-const2 #{CIVET_TISSUE_TYPE_CSF} #{CIVET_TISSUE_TYPE_CSF} "
+   cmd << "-segment "
+   cmd << "#{opt.classifyVolname} "
+   cmd << "#{masks_dir_fullPath}/wholeBrain_csf_mask.mnc "
+   do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
+
+
+   # extract the left and right cerebellum from the AAL volume
+   cmd = "mincmath -clobber -verbose "
+   cmd << "-const2 #{AAL_CEREBELLUM_RANGE[0]} #{AAL_CEREBELLUM_RANGE[1]} "
+   cmd << "-segment "
+   cmd << "#{opt.aalVolname} "
+   cmd << "#{masks_dir_fullPath}/aal_cerebellum_mask_allTissues.mnc "
+   do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
+
+
+   # apply the gray and white matter masks to the label volume mask
+   # ... resulting in cerebellar gm/wm masks
+   cmd = "mincmath -clobber -verbose -mult "
+   cmd << "#{masks_dir_fullPath}/aal_cerebellum_mask_allTissues.mnc "
+   cmd << "#{masks_dir_fullPath}/wholeBrain_gray_matter_mask.mnc "
+   cmd << "#{masks_dir_fullPath}/cerebellum_mask_gm.mnc "
+   do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
+   #
+   cmd = "mincmath -clobber -verbose -mult "
+   cmd << "#{masks_dir_fullPath}/aal_cerebellum_mask_allTissues.mnc "
+   cmd << "#{masks_dir_fullPath}/wholeBrain_white_matter_mask.mnc "
+   cmd << "#{masks_dir_fullPath}/cerebellum_mask_wm.mnc "
+   do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
+
+   # combine gm and wm masks to get a nice composite
+   cmd = "mincmath -clobber -verbose -add "
+   cmd << "#{masks_dir_fullPath}/cerebellum_mask_gm.mnc "
+   cmd << "#{masks_dir_fullPath}/cerebellum_mask_wm.mnc "
+   cmd << "#{masks_dir_fullPath}/cerebellum_mask_gmWm.mnc"
+   do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
+
+
+   # set job status to done
+   set_job_status(masksLogs_dir_fullPath, "beagle_masks_generate_from_labels_JobStatus", "finished")
+
+   # log a 'done' message to the subject's master logfile, and then write out logfile
+   logger.log_stop_message(progname, opt.keyname, 'MASKS', opt.scanDate)
+   logger.save_to_file()
+
+
+rescue RuntimeError => e
+   STDERR.puts e
+   exit 1
+end  #main()
+

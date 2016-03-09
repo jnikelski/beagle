@@ -1,0 +1,373 @@
+#!/usr/bin/Rscript   --default-packages=utils,methods,base,stats,grDevices
+# ==============================================================================
+# PURPOSE:
+#
+usage_text <- 
+"\nbeagle_vbm_compute_individ_VBM.Rscript [options] "
+#
+description_text <- 
+"\n\n   The Purpose of this script is to produce gray and white
+matter VBM z-scores for a given subject, when compared against a
+model mean and std dev voluume.
+"
+#
+# ==============================================================================
+
+# Set options
+options(width=180)
+
+
+# <Parsing>
+#
+# parse the input line to grab our options and arguments
+suppressPackageStartupMessages(library("optparse"))
+#
+# set up a list of allowable options
+option_list <- list(
+   make_option(c("-v", "--verbose"), 
+         action="store_true", 
+         type="logical", default=FALSE, 
+         help="Generate all sorts of messages [default is *not* verbose]"),
+               
+   make_option(c("-d", "--debug"), 
+         action="store_true", 
+         type="logical", default=FALSE, 
+         help="Generate debug messages"),
+               
+   make_option(c("--keyname"), 
+         action="store", 
+         type="character", default=NULL, dest="keyname",
+         help="Subject keyname (E.g. \"yueh\")"),
+
+   make_option(c("--scanDate"), 
+         action="store", 
+         type="character", default=NULL, dest="scanDate",
+         help="Civet scan date for subject. (E.g. \"20071009\")"),
+               
+   make_option(c("--settingsFile"), 
+         action="store", 
+         type="character", default=NULL, dest="settingsFile",
+         help="Fullpath to the aggregated settings file"),
+               
+   make_option(c("--logDir"), 
+         action="store", type="character", default=NULL, dest="logDir",
+         help="Fullpath of log/status file output directory")
+)
+
+#
+# ... create the parser, and then parse the command line
+header_text <- paste(usage_text, description_text, sep="")
+parser <- OptionParser(usage=header_text, option_list=option_list)
+optX <- parse_args(parser, args=commandArgs(trailingOnly=TRUE), positional_arguments=TRUE)
+
+# ... move options and args into separate, more convenient structures
+opts_in <- optX$options
+
+# check for the correct number of input volumes
+if ( length(optX$args) > 0 ){
+   stop("Extra positional arguments have been specified. Please stop that.")
+}
+#
+# </Parsing>
+
+
+#DEBUG ===========================================
+#opts_in <- list()
+#opts_in$verbose <- TRUE
+#opts_in$debug <- TRUE
+#opts_in$keyname <- "yueh"
+#opts_in$scanDate <- "20071009"
+#opts_in$settingsFile <- "..."
+#
+#
+log_file <- "loggingBySGE"
+#DEBUG ===========================================
+
+
+# add some extra derived values to the input packet
+opts_in$scanId <- paste(opts_in$keyname, opts_in$scanDate, sep="-")
+opts_in$vbm_dirname <- paste("VBM", opts_in$scanDate, sep="-")
+
+
+# if the log is being written to SGE, then don't log internally
+if ( log_file != "loggingBySGE" ) {
+   sink(log_file)
+   options(echo=FALSE)
+}
+
+
+
+# = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
+#
+
+# load the HCLab Loris Analyis library
+library(lorisStatistics)
+#suppressPackageStartupMessages(library(lorisStatistics))  
+
+# read the Loris aggregated settings file (in JSON format)
+#cat(sprintf("BEFORE settings load\n"))
+settings <- read_loris_aggregated_settings(opts_in$settingsFile, verbose=TRUE)
+#cat(sprintf("AFTER settings load\n"))
+
+CIVET_VERSION <- settings$CIVET_VERSION
+CIVET_PREFIX <- paste(settings$CIVET_PREFIX, '_', sep='')
+ELDERLY_MODEL_NUMBER_OF_SUBJECTS <- as.numeric(settings$ELDERLY_MODEL_NUMBER_OF_SUBJECTS)
+ELDERLY_MODEL_DIR <- settings$ELDERLY_MODEL_DIR
+ELDERLY_MODEL_PMAP_MEAN_GRAY_VOLUME <- settings$ELDERLY_MODEL_PMAP_MEAN_GRAY_VOLUME
+ELDERLY_MODEL_PMAP_STDEV_GRAY_VOLUME <- settings$ELDERLY_MODEL_PMAP_STDEV_GRAY_VOLUME
+ELDERLY_MODEL_PMAP_MEAN_WHITE_VOLUME <- settings$ELDERLY_MODEL_PMAP_MEAN_WHITE_VOLUME
+ELDERLY_MODEL_PMAP_STDEV_WHITE_VOLUME <- settings$ELDERLY_MODEL_PMAP_STDEV_WHITE_VOLUME
+
+VBM_GM_ZSCORE_VOLUME_SUFFIX <- settings$VBM_GM_ZSCORE_VOLUME_SUFFIX
+VBM_WM_ZSCORE_VOLUME_SUFFIX <- settings$VBM_WM_ZSCORE_VOLUME_SUFFIX
+
+
+# define some useful subdirectories
+LORIS_ROOT_DIR <- settings$LORIS_ROOT_DIR
+loris_subject_rootDir <- file.path(LORIS_ROOT_DIR, opts_in$keyname)
+vbm_subject_rootDir <- file.path(loris_subject_rootDir, opts_in$vbm_dirname)
+vbm_subject_logsDir <- file.path(vbm_subject_rootDir, "logs")
+vbm_subject_imagesDir <- file.path(vbm_subject_rootDir, "images")
+
+
+# civet-related paths
+CIVET_ROOT_DIR <- settings$CIVET_ROOT_DIR
+civetPath_subjectRoot <- file.path(CIVET_ROOT_DIR, opts_in$scanId)
+civetPath_subjectVBM <- file.path(civetPath_subjectRoot, "VBM")
+
+
+# set working directory as the VBM subject root dir
+wrkDir <- vbm_subject_rootDir
+setwd(wrkDir)
+
+
+# load subject's master logfile, and then write a start message
+llogger <- loris_logger_loadFromFile(opts_in$keyname, settings)
+progname <- 'beagle_vbm_compute_individ_VBM.Rscript'
+llogger <- loris_logger_logStartMessage(progname, opts_in$keyname, 'VBM', opts_in$scanDate, llogger)
+llogger <- loris_logger_logMessage(progname, opts_in$keyname, 'VBM',
+                                       opts_in$scanDate,
+                                       'civet_version', CIVET_VERSION,
+                                       llogger)
+
+# set the status to "running"
+cat(sprintf("Computing individual VBM results values for %s\n", opts_in$keyname))
+status_filename_running <- "beagle_vbm_compute_individ_VBM_JobStatus.running"
+status_filename_running <- file.path(vbm_subject_logsDir, status_filename_running)
+file.create(status_filename_running)
+
+
+
+# Compute the Gray Matter VBM
+#
+# read in the model mean and standard dev volumes
+meanGmFilename_fullpath <- file.path(ELDERLY_MODEL_DIR, ELDERLY_MODEL_PMAP_MEAN_GRAY_VOLUME)
+print(meanGmFilename_fullpath)
+meanGmVol <- mincIO.readVolume(meanGmFilename_fullpath, volumeType="anatomical")
+#
+stdevGmFilename_fullpath <- file.path(ELDERLY_MODEL_DIR, ELDERLY_MODEL_PMAP_STDEV_GRAY_VOLUME)
+print(stdevGmFilename_fullpath)
+stdevGmVol <- mincIO.readVolume(stdevGmFilename_fullpath, volumeType="anatomical")
+
+
+# read in the subject's blurred gray matter volume
+gmFilename <- paste(CIVET_PREFIX, opts_in$scanId, "_smooth_8mm_gm.mnc", sep="")
+gmFilename_fullpath <- file.path(civetPath_subjectVBM, gmFilename)
+print(gmFilename_fullpath)
+gmVol <- mincIO.readVolume(gmFilename_fullpath, volumeType="anatomical")
+
+
+
+# print the volume ranges before we compute
+range(gmVol)
+range(meanGmVol)
+range(stdevGmVol)
+
+
+# compute a z-score at each voxel
+zVol <- (gmVol - meanGmVol) / stdevGmVol
+
+# print some z-score details
+sum(zVol > 100)
+#which(zVol > 100)
+#zVol[which(zVol > 100)]
+
+
+
+# as the std dev volume contains a lot of zeros, we end up with
+# quite a few NA & Inf z-scores (division by zero, ya know).
+# ... set the NAs & Infs to a z-score of zero
+cat(sprintf("Gray matter z-score volume: Count of NAs is %d\n",sum(is.na(zVol))))
+zVol[is.na(zVol)] <- 0
+cat(sprintf("Gray matter z-score volume: Count of Infs is %d\n",sum(is.infinite(zVol))))
+zVol[is.infinite(zVol)] <- 0
+cat(sprintf("Range of z-score values range after removal of NA and Inf is %5.2f : %5.2f\n",
+                           range(zVol)[1],
+                           range(zVol)[2]))
+
+
+# voxels which have an extremely low probability of containing gray
+# matter within the mean volume, are going to have extremely small
+# sd values, resulting in *huge* z-scores.
+#
+# now, we know that we can't get stable sd values (and therefore
+# reliable z-scores) if most of the subjects don't have gray matter
+#  at a given voxel, so let's set the probability threshold to 
+# reflect the minimum number of subjects that need to have GM
+# at a given voxel.  This is easy to do, given that we know that
+# the elderly template was constructed with ELDERLY_MODEL_NUMBER_OF_SUBJECTS 
+# subjects. Here are some sample thresholds, assuming that
+# ELDERLY_MODEL_NUMBER_OF_SUBJECTS = 200:
+#
+# p_thold <- 5/ELDERLY_MODEL_NUMBER_OF_SUBJECTS   # p_thold <- 0.025
+# p_thold <- 10/ELDERLY_MODEL_NUMBER_OF_SUBJECTS     # p_thold <- 0.05
+p_thold <- 20/ELDERLY_MODEL_NUMBER_OF_SUBJECTS     # p_thold <- 0.100
+# p_thold <- 50/ELDERLY_MODEL_NUMBER_OF_SUBJECTS    # p_thold <- 0.25 
+#
+# so ... and this is kind of arbitrary, let's mask those z-scores at 
+# voxels with probability of GM less than 0.10. As such, we are saying 
+# that we believe that we need at least 20 subjects with GM at a given 
+# voxel in order to generate a meaningful std dev.
+
+cat(sprintf("Gray matter z-score volume: Number of voxels with a GM probability of less than %g: %d\n",p_thold, sum(meanGmVol < p_thold)))
+
+zVol[meanGmVol < p_thold] <- 0
+range(zVol)
+cat(sprintf("Range of z-score values range after removal of low prob GM voxels is %5.2f : %5.2f\n",
+                           range(zVol)[1],
+                           range(zVol)[2]))
+llogger <- loris_logger_logMessage(progname, opts_in$keyname, 'VBM', unlist(strsplit(opts_in$vbm_dirname,'-'))[2], 'gm_zscore_range', range(zVol), llogger)
+
+# write out the new z-score volume
+zVol <- mincIO.asVolume(zVol,likeTemplate="icbm152")
+zVolname = paste(opts_in$keyname, VBM_GM_ZSCORE_VOLUME_SUFFIX, '.mnc', sep="")
+zVolname_fullpath <- file.path(vbm_subject_rootDir, zVolname)
+mincIO.writeVolume(zVol, filename=zVolname_fullpath)
+
+
+
+
+
+# visualize the z-score via a histogram
+z.m <- getDataPart(zVol)
+pngFilename <- paste(opts_in$keyname, VBM_GM_ZSCORE_VOLUME_SUFFIX, '_histogram.png', sep="")
+pngFilenameFullPath <- file.path(vbm_subject_imagesDir, pngFilename)
+png(filename= pngFilenameFullPath, width=800, height=600)
+zScore_plot <- histogram(z.m,
+            xlab="Masked gray matter voxel VBM z-scores", 
+            xlim=c(-5,5),
+            ylim=c(0,5),
+            nint=200)
+print(zScore_plot)
+dev.off()
+
+
+
+
+# Compute the White Matter VBM
+#
+# read in the model mean and standard dev volumes
+meanWmFilename_fullpath <- file.path(ELDERLY_MODEL_DIR, ELDERLY_MODEL_PMAP_MEAN_WHITE_VOLUME)
+meanWmVol <- mincIO.readVolume(meanWmFilename_fullpath, volumeType="anatomical")
+#
+stdevWmFilename_fullpath <- file.path(ELDERLY_MODEL_DIR, ELDERLY_MODEL_PMAP_STDEV_WHITE_VOLUME)
+stdevWmVol <- mincIO.readVolume(stdevWmFilename_fullpath, volumeType="anatomical")
+
+
+# read in the subject's blurred gray matter volume
+wmFilename <- paste(CIVET_PREFIX, opts_in$scanId, "_smooth_8mm_wm.mnc", sep="")
+wmFilename_fullpath <- file.path(civetPath_subjectVBM, wmFilename)
+wmVol <- mincIO.readVolume(wmFilename_fullpath, volumeType="anatomical")
+
+
+# print the volume ranges before we compute
+range(wmVol)
+range(meanWmVol)
+range(stdevWmVol)
+
+
+# compute a z-score at each voxel
+zVol <- (wmVol - meanWmVol) / stdevWmVol
+
+
+# print some z-score details
+sum(zVol > 100)
+#which(zVol > 100)
+#zVol[which(zVol > 100)]
+
+
+# as the std dev volume contains a lot of zeros, we end up with
+# quite a few NA & Inf z-scores (division by zero, ya know).
+# ... set the NAs & Infs to a z-score of zero
+cat(sprintf("White matter z-score volume: Count of NAs is %d\n",sum(is.na(zVol))))
+zVol[is.na(zVol)] <- 0
+cat(sprintf("White matter z-score volume: Count of Infs is %d\n",sum(is.infinite(zVol))))
+zVol[is.infinite(zVol)] <- 0
+cat(sprintf("Range of z-score values range after removal of NA and Inf is %5.2f : %5.2f\n",
+                           range(zVol)[1],
+                           range(zVol)[2]))
+
+
+# let's ignore those z-scores with less than 10% chance of gray matter 
+# in the mean volume
+p_thold <- 20/ELDERLY_MODEL_NUMBER_OF_SUBJECTS
+cat(sprintf("White matter z-score volume: Number of voxels with a WM probability of less than %g: %d\n",p_thold, sum(meanWmVol < p_thold)))
+zVol[meanWmVol < p_thold] <- 0
+range(zVol)
+cat(sprintf("Range of z-score values range after removal of low prob WM voxels is %5.2f : %5.2f\n",
+                           range(zVol)[1],
+                           range(zVol)[2]))
+llogger <- loris_logger_logMessage(progname, opts_in$keyname, 'VBM', unlist(strsplit(opts_in$vbm_dirname,'-'))[2], 'wm_zscore_range', range(zVol), llogger)
+
+
+# write out the new z-score volume
+zVol <- mincIO.asVolume(zVol,likeTemplate="icbm152")
+zVolname = paste(opts_in$keyname, VBM_WM_ZSCORE_VOLUME_SUFFIX, '.mnc', sep="")
+zVolname_fullpath <- file.path(vbm_subject_rootDir, zVolname)
+mincIO.writeVolume(zVol, filename=zVolname_fullpath)
+
+
+
+# visualize the z-score via a histogram
+z.m <- getDataPart(zVol)
+pngFilename <- paste(opts_in$keyname, VBM_WM_ZSCORE_VOLUME_SUFFIX, '_histogram.png', sep="")
+pngFilenameFullPath <- file.path(vbm_subject_imagesDir, pngFilename)
+png(filename= pngFilenameFullPath, width=800, height=600)
+zScore_plot <- histogram(z.m,
+            xlab="Masked white matter voxel VBM z-scores", 
+            xlim=c(-5,5),
+            ylim=c(0,5),
+            nint=200)
+print(zScore_plot)
+dev.off()
+
+
+
+# close log file
+if ( log_file != "loggingBySGE" ) {
+   sink()
+}
+
+# set the status to "finished"
+status_filename_finished <- "beagle_vbm_compute_individ_VBM_JobStatus.finished"
+status_filename_finished <- file.path(vbm_subject_logsDir, status_filename_finished)
+file.rename(status_filename_running, status_filename_finished)
+
+
+# log a 'done' message to the subject's master logfile, and then write out logfile
+llogger <- loris_logger_logStopMessage(progname, opts_in$keyname, 'VBM', opts_in$scanDate, llogger)
+loris_logger_saveToFile(opts_in$keyname, llogger, settings)
+
+
+
+
+q(save="no")
+
+
+
+
+
+
+
+
+

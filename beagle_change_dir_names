@@ -1,0 +1,154 @@
+#!/usr/bin/env ruby
+# ==============================================================================
+# Purpose:
+#     One-off script.
+# 
+#
+# ==============================================================================
+
+require 'optparse'
+require 'ostruct'
+require 'pathname'
+require 'fileutils'
+require 'tmpdir'            # needed for Dir::tmpdir
+
+# these libs are pointed to by the RUBYLIB env variable
+require 'loris_function_library'
+require 'hclab_function_library'
+
+# start of main script
+begin
+   opt                     = OpenStruct.new{}   # store input options
+   opt.verbose             = false
+   opt.debug               = false
+   opt.fake                = false
+   opt.forceAll            = false
+   #
+   opt.keyname             = ""                 # subject keyname; used for file naming
+   opt.SGE                 = false              # submit to batch queueing system
+   opt.logfile             = ""                 # logfile
+
+   # List of arguments.
+   opts = OptionParser.new do |opts|
+      opts.banner = "Usage: #{$0} [Options]"
+      opts.separator ""
+      opts.separator "Options:"
+
+      opts.on('-v', '--[no-]verbose', 'Run verbosely') { |v| opt.verbose = v }
+
+      opts.on('-d', '--debug', 'Print pedantic debugging messages') { |d| opt.debug = d }
+
+      opts.on('-f', '--fake', 'Do not actually execute the commands') { |f| opt.fake = f }
+
+      opts.on('--forceAll', 'Force processing of all subjects in control file') { |forceAll| opt.forceAll = forceAll }
+
+      opts.on('--SGE', 'Submit processing to batch queueing system') { |sge| opt.SGE = sge }
+
+      opts.on('--logfile logfile', "Logfile name (by default, log to screen)") do |lf|
+         opt.logfile = lf.to_s
+         puts "** logfile: " + opt.logfile if opt.verbose
+      end
+
+      opts.on_tail("-h", "--help", "Show this very helpful help message") do
+         puts opts
+         exit
+      end
+   end  #OptionParser
+
+   # run parse!() method in the OptionParser object, passing ARGV
+   # NB: the "!" in parse!() removes the switches from ARGV
+   puts "Before OptionParser start ..." if opt.debug
+   begin
+      opts.parse!(ARGV)
+   rescue Exception => e
+      puts e, "", opts
+      exit
+   end
+
+
+
+   # = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
+   #
+
+   # load the Loris settings
+   settings_file = ENV['LORIS_SETTINGS_FILE']
+   settings = load_loris_settings(settings_file, verbose=opt.verbose, debug=opt.debug)
+
+   LORIS_DEBUG = settings['LORIS_DEBUG']
+   if ( LORIS_DEBUG == 'ON' ) then opt.debug=true end
+   puts "Loris debug switch is: #{LORIS_DEBUG}" if opt.debug
+
+   # init variables from the settings file
+   SCRIPT_DIR = settings['SCRIPT_DIR']
+   puts "SGE script directory is: #{SCRIPT_DIR}" if opt.debug
+   #
+   CIVET_PREFIX = settings['CIVET_PREFIX'] + '_'
+   puts "Civet filenameing prefix: #{CIVET_PREFIX}" if opt.debug
+   #
+
+   # check if the Loris output directory tree exists and is valid
+   LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
+   puts "Loris output root directory is: #{LORIS_ROOT_DIR}" if opt.debug
+   if ( !File.exists?(LORIS_ROOT_DIR) || !File.directory?(LORIS_ROOT_DIR) ) then
+      puts sprintf("\n*** Error: The specified Loris output root directory [%s] is not valid", LORIS_ROOT_DIR)
+      puts opts
+      exit
+   end
+
+   # * * * * *   End of input argument validation   * * * * *
+
+   # load the Civet subject_info file, and do simple structural validation
+   CIVET_SUBJECT_INFO = settings['CIVET_SUBJECT_INFO']
+   check_subject_info_file(CIVET_SUBJECT_INFO, 2)
+   puts "Civet subject info file [#{CIVET_SUBJECT_INFO}] passed validation" if opt.debug
+
+   csv = File.open(CIVET_SUBJECT_INFO, 'r')
+   csv.each_with_index{ |row, ndx|
+      # remove EOL and then split by comma
+      row.chomp!
+      csv_parts = row.split(',')
+
+      # assign the elements to meaningful variable names
+      keyname = csv_parts[0]
+      civetId = csv_parts[1]
+
+      # skip over the header
+      if ( ndx ==  0 ) then next end
+
+      # split the civetId into 2 parts
+      # ... e.g. ainvar-20081211 --> ainvar + 20081211
+      civetId_parts = civetId.split('-')
+      civetId_scanDate = civetId_parts[1]
+      puts civetId_scanDate
+
+      # OK, now that we have the subdir of interest, let's change some subdir names
+      lorisKeyname_dir_fullPath = File.join(LORIS_ROOT_DIR, keyname)
+
+      # ... AAL
+      oldName = File.join(lorisKeyname_dir_fullPath, "AAL_labels")
+      newSubdirName = "AAL-" + civetId_scanDate
+      newName = File.join(lorisKeyname_dir_fullPath, newSubdirName)
+      puts(sprintf("Changing %s ---> %s", oldName, newName))
+      FileUtils.mv(oldName, newName, :verbose => true)
+
+      # ... Ct
+      oldName = File.join(lorisKeyname_dir_fullPath, "Ct")
+      newSubdirName = "THICKNESS-" + civetId_scanDate
+      newName = File.join(lorisKeyname_dir_fullPath, newSubdirName)
+      puts(sprintf("Changing %s ---> %s", oldName, newName))
+      FileUtils.mv(oldName, newName, :verbose => true)
+
+      # ... VBM
+      oldName = File.join(lorisKeyname_dir_fullPath, "VBM")
+      newSubdirName = "VBM-" + civetId_scanDate
+      newName = File.join(lorisKeyname_dir_fullPath, newSubdirName)
+      puts(sprintf("Changing %s ---> %s", oldName, newName))
+      FileUtils.mv(oldName, newName, :verbose => true)
+   }
+   csv.close
+
+rescue RuntimeError => e
+   STDERR.puts e
+   exit 1
+end  #main()
+

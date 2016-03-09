@@ -1,0 +1,140 @@
+beagle_14.04.16
+ * massive rewrite of all scripts
+ * transitioned to driving by subject, rather than by task
+ * created new aggregated settings concept (config settings + run settings)
+ * created logging object (Ruby)
+ * created subject configuration objects
+ * renamed scripts from Loris to Beagle
+
+loris_13.08.08
+ * implement new Loris loggin framework
+ * change some *worker scripts* to read Loris settings directly,
+   instead of having them passed by a driver scripts
+ * changed some indentation
+
+loris_13.07.07
+ * permit multiple reference tissues with PiB (partial implementation)
+ * permit analysis of volumes from other labs (e.g. SJLab)
+ * change code to use the NUC T1 volume during fitting
+
+loris_11.11.19
+ * Cortical thickness: added surface rendering scripts
+ * modified Beagle reports to include new cortical thickness
+   surface renderings
+ * modified "hclab_pib_preprocess_verification" to better overlay
+   the normalized mean image, by increasing the 
+   mincthumbs threshold.
+ * hclab_pib_compute_SUVR.Rscript: added 3 unique ID
+   columns to the generated csv output, to match the
+   output of the other modalities.   
+
+loris_11.08.28
+ * Cortical thickness: added a bunch of thickness scripts
+ * Changed Loris to Beagle in the auto-generated report
+
+loris_11.08.16
+ * FDG: added all of the rest of the FDG scripts
+ * changed hclab_pib_preprocess_verification to use "inormalize"
+   do intensity normalization prior to visualization
+ * changed hclab_pib_make_cerebellar_masks to simply
+   hclab_make_cerebellar_masks, as it was being used 
+   for both PiB and FDG
+ * split hclab_pib_align_to_anatomy into 
+   hclab_align_to_anatomy_multiFrame (for PiB) and
+   hclab_align_to_anatomy_singleFrame (for FDG)
+
+loris_11.07.23
+ * VBM: adjusted significance thresholds
+ * VBM: made changes to hclab_vbm_quantification.Rscript to
+   generate results for multiple thresholds
+   - also, removed the code to produce percentage values,
+     as these values are derived, as best produced by the user
+     as needed
+
+loris_11.07.05
+ * FDG: added "loris_fdg_convert_native2mnc_driver"
+ * FDG: added "hclab_fdg_convert_native2mnc"
+ * change Loris version to LORIS_VERSION="11.07.31"
+
+loris_11.06.01
+ * turned off decay correction for PiB
+ * changed loris settings to use the new ldiAdni200 templates
+ * changed colormap to paint the insula orange instead of white
+ * put all Sweave files under source control, and added
+   new parameter to loris_pipeline_settings
+ * rearranged Loris reports, creating new Introduction
+   and Methods chapters
+ * added code to check for PiB dynamic volume truncation
+ * added code to create a modified cerebellar GM mask,
+   taking possible PiB scan cerebellar tuncation into account.
+   This new mask is now used by hclab_pib_compute_ratios.Rscript
+   to compute average cerebellar PiB signal per frame, making the
+   ratios more resilient to cerebellar truncation.
+
+loris_11.05.10
+ * added a lot of AAL template related stuff, mostly
+    related to use of the new ldiElderlyT60 AAL
+    template instead of the old ICBM AAL template
+ * used the 50% Background handicap template for
+    creation of the individualized AAL tempates
+ * used the 99% Background handicap template for
+    surface visualization
+
+loris_11.04.15
+ * added code to quantify VBM results using AAL template ROIs
+ * added script loris_vbm_quantification_driver
+ * added script hclab_vbm_quantification.Rscript
+ * modified scripts loris_vbm_compute_individ_VBM_driver and
+   hclab_vbm_compute_individ_VBM.Rscript to use the optparse package
+ * modified hclab_vbm_compute_individ_VBM.Rscript to (1) not produce
+   the FDR thresholds (we don't use them), and (2) set the z-score to
+   zero for voxels that have probability values less than 0.1 in the
+   elderly model volume. The z-score change should serve to decrease the
+   number of inflated positive z-scores reported.
+ * changes made to loris_pipeline.settings
+   (a) added a VBM threshold parameter [VBM_ZSCORE_THRESHOLD]
+   (b) use new elderly model directory
+   (c) use new AAL template
+ 
+loris_11.02.10
+ * loris_pipeline.settings: changed to use the new, nested loris software
+   directory structure
+ * loris_pipeline.settings: changed to use the new AAL122 labels
+
+loris_11.02.02
+ * split the Ruby loris function library into a loris-specific library,
+   and an HCLab function library containing general use functions
+ * added a new RUBYLIB env variable to point to the new function libs
+ * changed a great many functions to point to the new function libs
+ * moved the "do_cmd" function to the new HCLab function library, and
+   removed that code from various hclab_* scripts. "do_cmd" is now called
+   from the HCLab Ruby function library
+ * added new HCLab functions "get_job_status/set_job_status" to simplify
+   getting/setting job status from within Ruby scripts.
+ * modified a bunch of Ruby functions to use the new get/set status
+   functions. Also, inserted the setting of status information into a
+   few scripts which previously did not provide status.
+ * modified a number of scripts which previously tested for having previously
+   been run by looking for the existance of various volume products. Now, all
+   scripts should determine run status by querying the job status info.
+
+loris_11.01.31
+ * made changes to a number of functions to insert the AAL version into
+   various filenames, thus permitting old and new AAL results to co-exist.
+ * effected files:
+    * hclab_labels_fit_AAL
+    * hclab_pib_compute_SUVR.Rscript
+    * loris_labels_fit_AAL_driver
+    * loris_pib_compute_SUVR_driver
+    * loris_pipeline.settings
+
+loris_11.01
+ * hclab_pib_compute_SUVR.Rscript: changes related to AAL122 labels
+ * hclab_pib_ecat_to_minc: changes ecattominc to write shorts rather than bytes,
+   since the range of ecat values was being massively compressed in order to
+   fit into 8 bits
+
+loris_10.05
+ * initial version
+ * some day I'll consider using version control for this
+   ... but not today

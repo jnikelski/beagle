@@ -1,0 +1,85 @@
+# = = = = = = = = = = = = = = = = = = = = = = = == = = = = = = = = = = = = = =
+#
+# Loris Run Configuration file
+#
+#    This file includes a number of settings which are required for
+# the processing of a specific Loris **run**. 
+#
+# These values are different from settings in that run config values
+# are likely to change from run to run, whereas the settings will
+# be more static.
+#
+# Note on Processing Flow:
+# The idea is that the various Loris settings will be loaded as
+# follows:
+#  (1)   load the relatively static Loris settings
+#  (2)   load the more dynamic, run-specific, config settings
+#  (3)   any values existing in both files will be OVERRIDDEN by the
+#        run config values. So, the run config values have priority.
+#
+# NOTE A:
+#     The format of this file is IDENTICAL to that of the settings file.
+#     Soooo, if you change the format of the one, you had better take
+#     a good, hard look at the other.
+#
+# NOTE B:
+#     This file is read by 2 separate read routines - one written
+#     in Ruby, and the other written in R. Before you even start
+#     considering changing the format of this file, make sure that
+#     the modified format is readable by the read routines in
+#     *both* languages.
+#
+#  YET ANOTHER NOTE:
+#     OK, I just got bitten by this. Make sure *not* to use any
+#     extra spaces in any of the assignment statements. The parser
+#     barfs if you do this. 
+#
+# = = = = = = = = = = = = = = = = = = = = = = = == = = = = = = = = = = = = = =
+#
+# number of settings in this file (INCLUDING this value)
+# ... this is used to validate the file structure 
+NBR_SETTINGS="9"
+
+
+# = = = = = = = = = = = = = = = = = = = = = 
+#
+# PART A -- Settings File Overrides
+#
+# = = = = = = = = = = = = = = = = = = = = = 
+
+# debug switch: ON or OFF
+# ... turning DEBUG ON makes Loris spit out extra messages
+LORIS_DEBUG="OFF"
+
+# Civet filenaming prefix
+CIVET_PREFIX="HCLab"
+
+# where to find the SGE driver scripts?
+#SCRIPT_DIR="/data/raid01/software/loris/loris_14.03.20"
+SCRIPT_DIR="/home/jnikelski/devel/loris-git/main"
+
+# Reporting-related options (Use absolute paths only)
+#LORIS_RESOURCE_DIR="/data/raid01/software/loris/loris_14.03.20/resources/"
+LORIS_RESOURCE_DIR="/home/jnikelski/devel/loris-git/main/resources/"
+
+
+# = = = = = = = = = = = = = = = = = = = = = 
+#
+# PART B -- Run-Specific Values
+#
+# = = = = = = = = = = = = = = = = = = = = = 
+
+# where is Loris to write the output?
+LORIS_ROOT_DIR="/home/jnikelski/localData/JNLab/beagle/xrun_2014-99-11/results"
+
+# list of subjects to be processed (quoted, with no intervening spaces)
+# eg., "halleck,glooscap"
+SUBJECTS_TO_BE_PROCESSED="glooscap"
+
+# identifier used to name the aggregate settings file
+# ... makes sense to use the **run date**
+LORIS_RUN_IDENTIFIER="20140326"
+
+# on which SGE host is this run to be executed? (eg., "baltar","apollo")
+SGE_EXECUTION_HOST="apollo"
+

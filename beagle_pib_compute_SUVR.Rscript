@@ -1,0 +1,367 @@
+#!/usr/bin/Rscript   --default-packages=utils,methods,base,stats,grDevices
+# ==============================================================================
+# PURPOSE:
+#
+usage_text <- 
+"\nbeagle_pib_compute_SUVR.Rscript [options] "
+#
+description_text <- 
+"\n\n   The Purpose of this script is to compute SUVR values
+for a given subject.
+"
+#
+# ==============================================================================
+
+ls()
+print(usage_text)
+print(description_text)
+
+# Set options
+options(width=180)
+
+
+# * * * * * * * * 
+# Function:
+#     Given a data.frame of ROI ratio values, compute a global SUVR values
+#     for a subset of those ROIs
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+compute_selected_SUVR <- function(ratios_byRoi.df) {
+   #
+   rtn_list <- list()
+   print(ratios_byRoi.df)
+   #
+   # compute total voxels
+   totalVoxels <- sum(ratios_byRoi.df$nVoxels)
+   cat(sprintf("Total number of voxels comprising all SUVR ROIs: %d\n", totalVoxels))
+   #
+   # normalize ROI nVoxels to a proportion of the total. 
+   # ... we can use use these values as weights
+   vxWeights <- ratios_byRoi.df$nVoxels / totalVoxels
+   cat(sprintf("Normalized ROI volumes:\n"))
+   print(vxWeights)
+   #
+   # multiply the ROI mean SUVR values by the weights, then sum
+   weighted_suvr <- ratios_byRoi.df$suvr * vxWeights
+   cat(sprintf("Weighted SUVR values:\n"))
+   print(weighted_suvr)
+   #
+   # sum it all up to get the weighted mean
+   mean_weighted_suvr <- sum(weighted_suvr)
+   cat(sprintf("SUVR over all gray matter: %g\n", mean_weighted_suvr))
+   
+   rtn_list$totalVoxels <- totalVoxels
+   rtn_list$suvr <- mean_weighted_suvr
+   return(rtn_list)
+
+}
+
+
+
+# <Parsing>
+#
+# parse the input line to grab our options and arguments
+suppressPackageStartupMessages(library("optparse"))
+#
+# set up a list of allowable options
+option_list <- list(
+   make_option(c("-v", "--verbose"), 
+         action="store_true", 
+         type="logical", default=FALSE, 
+         help="Generate all sorts of messages [default is *not* verbose]"),
+               
+   make_option(c("-d", "--debug"), 
+         action="store_true", 
+         type="logical", default=FALSE, 
+         help="Generate debug messages"),
+               
+   make_option(c("--keyname"), 
+         action="store", 
+         type="character", default=NULL, dest="keyname",
+         help="Subject keyname (E.g. \"yueh\")"),
+               
+   make_option(c("--scanDate"), 
+         action="store", 
+         type="character", default=NULL, dest="scanDate",
+         help="PiB scan date for subject. (E.g. \"20071009\")"),
+
+   make_option(c("--civetScanDate"), 
+         action="store", 
+         type="character", default=NULL, dest="civetScanDate",
+         help="Civet scan date for subject. (E.g. \"20071009\")"),
+               
+   make_option(c("--settingsFile"), 
+         action="store", 
+         type="character", default=NULL, dest="settingsFile",
+         help="Fullpath to the aggregated settings file")
+)
+#
+#
+# ... create the parser, and then parse the command line
+header_text <- paste(usage_text, description_text, sep="")
+parser <- OptionParser(usage=header_text, option_list=option_list)
+optX <- parse_args(parser, args=commandArgs(trailingOnly=TRUE), positional_arguments=TRUE)
+
+# ... move options and args into separate, more convenient structures
+O <- optX$options
+
+# check for the correct number of input volumes
+if ( length(optX$args) > 0 ){
+   stop("Extra positional arguments have been specified. Please stop that.")
+}
+#
+# </Parsing>
+
+
+#DEBUG ===========================================
+#O$ <- list()
+#O$verbose <- TRUE
+#O$debug <- TRUE
+#O$keyname <- "fenrir"
+#O$scanDate <- "20071009"
+#O$settingsFile <- "..."
+#
+log_file <- "loggingBySGE"
+#DEBUG ===========================================
+
+
+# add some extra derived values to the input packet
+O$scanId <- paste(O$keyname, O$scanDate, sep="-")
+O$civetScanId <- paste(O$keyname, O$civetScanDate, sep="-")
+O$pib_dirname <- paste("PiB", O$scanDate, sep="-")
+
+
+# if the log is being written to SGE, then don't log internally
+if ( log_file != "loggingBySGE" ) {
+   sink(log_file)
+   options(echo=FALSE)
+}
+
+
+
+# = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
+#
+
+# load the HCLab Loris Analyis library
+library(lorisStatistics)
+#suppressPackageStartupMessages(library(lorisStatistics))  
+
+
+# read the Loris aggregated settings file (in JSON format)
+#cat(sprintf("BEFORE settings load\n"))
+settings <- read_loris_aggregated_settings(O$settingsFile, verbose=TRUE)
+#cat(sprintf("AFTER settings load\n"))
+
+
+
+# define some useful subdirectories
+LORIS_ROOT_DIR <- settings$LORIS_ROOT_DIR
+keyname_dir_fullPath <- file.path(LORIS_ROOT_DIR, O$keyname)
+
+# PiB-related paths
+pibDir <- file.path(keyname_dir_fullPath, O$pib_dirname)
+pibDir_ratiosDir <- file.path(pibDir, "ratios")
+pibDir_logsDir <- file.path(pibDir, "logs")
+pibDir_imagesDir <- file.path(pibDir, "images")
+pibDir_masksDir <- file.path(pibDir, "masks")
+pibDir_talDir <- file.path(pibDir, "tal")
+
+RATIO_VOLUME_SUFFIX <- "_pibRatios_refCerebGM_noMask.mnc"
+# ... create a unique Id to write to csv file
+uniqueId <- paste(O$keyname, O$pib_dirname, sep="-")
+
+# AAL
+labels_dirname <- paste("AAL", O$civetScanDate, sep="-")
+labelsDir <- file.path(keyname_dir_fullPath, labels_dirname)
+#
+AAL_LABELS_VERSION <- settings$AAL_LABELS_VERSION
+LABEL_VOLUME_SUFFIX <- paste("_t1_final_", AAL_LABELS_VERSION, "Labels_gmMask.mnc", sep="")
+AAL_LABELS_NAMES <- settings$AAL_LABELS_NAMES
+AAL_LABELS_DIR <- settings$AAL_LABELS_DIR
+AAL_LABELS_DESCRIPTION_FILE <- file.path(AAL_LABELS_DIR, AAL_LABELS_NAMES)
+
+# civet-related paths
+CIVET_VERSION <- settings$CIVET_VERSION
+
+
+
+# set working directory as the PiB subject root dir
+wrkDir <- pibDir
+setwd(wrkDir)
+
+
+
+# Process subject
+#
+#
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+
+
+# load the HCLab Loris Analyis library
+library(lorisStatistics)
+#suppressPackageStartupMessages(library(lorisStatistics))  
+
+
+# load subject's master logfile, and then write a start message
+llogger <- loris_logger_loadFromFile(O$keyname, settings)
+progname <- 'beagle_pib_compute_SUVR.Rscript'
+llogger <- loris_logger_logStartMessage(progname, O$keyname, 'PiB', O$scanDate, llogger)
+llogger <- loris_logger_logMessage(progname, O$keyname, 'PiB',
+                                       O$scanDate,
+                                       'civet_version', CIVET_VERSION,
+                                       llogger)
+
+
+# set the status to "running"
+cat(sprintf("Computing PiB SUVR values for %s\n", O$scanId))
+status_filename_running <- "beagle_pib_compute_SUVR_JobStatus.running"
+status_filename_running <- file.path(pibDir_logsDir, status_filename_running)
+file.create(status_filename_running)
+
+
+# set label volume full path
+lblFilename <- paste(O$keyname, LABEL_VOLUME_SUFFIX, sep="")
+lblFilenameFullPath <- file.path(labelsDir, lblFilename)
+
+
+# set PiB ratio volume full path
+ratioFilename <- paste(O$keyname, RATIO_VOLUME_SUFFIX, sep="")
+ratioFilenameFullPath <- file.path(pibDir_ratiosDir, ratioFilename)
+
+
+# read in the AAL label details
+lblFile <- AAL_LABELS_DESCRIPTION_FILE
+lbl_details.df <- load_AAL_label_info(lblFile)
+# ... only retain cerebral labels (no cerebellum, no outside-the-brain)
+lbl_details.df <- subset(lbl_details.df, lbl_details.df$isCerebrum != 0 )
+
+
+
+# compute mean ratios over all ROIs
+ratios_byRoi.df <- compute_suvr_by_roi(ratioFilenameFullPath, lblFilenameFullPath, lbl_details.df)
+print(ratios_byRoi.df)
+
+
+# compute various aggregate SUVR values
+#
+# create a receiving data.frame
+# ... same format as the other, as we'll be "rbind"ing later
+nValues <- 3
+suvr_aggr.df <- data.frame(Description=rep("",nValues),
+                        Abbrev=rep("",nValues),
+                        LabelNo=rep(0,nValues),
+                        LabelName=rep("SUVR",nValues),
+                        isCerebrum=rep(0,nValues),
+                        isCortical =rep(0,nValues),
+                        isNeoCortical =rep(0,nValues),
+                        isSecondaryLbl =rep(0,nValues),
+                        nVoxels=rep(0,nValues),
+                        suvr=rep(0,nValues), stringsAsFactors=FALSE)
+
+
+
+# (1) SUVR over all cortical and sub-cortical gray matter
+#     ... no cerebellum, but everything else (including thalamus)
+ratios_byRoiX.df <- subset(ratios_byRoi.df, ratios_byRoi.df$isCerebrum != 0 & !is.na(ratios_byRoi.df$nVoxels)) 
+print(ratios_byRoiX.df)
+suvr.lst <- compute_selected_SUVR(ratios_byRoiX.df)
+#
+# save these results out 
+suvr_aggr.df$Description[1] <- "SUVR over all cerebral gray matter"
+suvr_aggr.df$Abbrev[1] <- "NA"
+suvr_aggr.df$LabelNo[1] <- NA
+suvr_aggr.df$LabelName[1] <- "SUVR"
+suvr_aggr.df$nVoxels[1] <- suvr.lst$totalVoxels
+suvr_aggr.df$suvr[1] <- suvr.lst$suvr
+suvr_aggr.df$isCerebrum[1] <- 1
+suvr_aggr.df$isCortical[1] <- 0
+suvr_aggr.df$isNeoCortical[1] <- 0
+suvr_aggr.df$isSecondaryLbl[1] <- 0
+print(suvr_aggr.df)
+#
+# write selected values to the logfile
+llogger <- loris_logger_logMessage(progname, O$keyname, 'PiB', O$scanDate, 
+                                       'suvr_over_cerebral_gm', suvr.lst$suvr, llogger)
+
+
+
+# (2) SUVR over all cortical gray matter
+ratios_byRoiX.df <- subset(ratios_byRoi.df, ratios_byRoi.df$isCortical != 0  & !is.na(ratios_byRoi.df$nVoxels)) 
+print(ratios_byRoiX.df)
+suvr.lst <- compute_selected_SUVR(ratios_byRoiX.df)
+#
+# save these results out 
+suvr_aggr.df$Description[2] <- "SUVR over all cortical gray matter"
+suvr_aggr.df$Abbrev[2] <- "NA"
+suvr_aggr.df$LabelNo[2] <- NA
+suvr_aggr.df$LabelName[2] <- "SUVR"
+suvr_aggr.df$nVoxels[2] <- suvr.lst$totalVoxels
+suvr_aggr.df$suvr[2] <- suvr.lst$suvr
+suvr_aggr.df$isCerebrum[2] <- 0
+suvr_aggr.df$isCortical[2] <- 1
+suvr_aggr.df$isNeoCortical[2] <- 0
+suvr_aggr.df$isSecondaryLbl[2] <- 0
+print(suvr_aggr.df)
+#
+# write selected values to the logfile
+llogger <- loris_logger_logMessage(progname, O$keyname, 'PiB', O$scanDate, 
+                                       'suvr_over_cortical_gm', suvr.lst$suvr, llogger)
+
+
+
+# (3) SUVR over all neo-cortical gray matter
+ratios_byRoiX.df <- subset(ratios_byRoi.df, ratios_byRoi.df$isNeoCortical != 0  & !is.na(ratios_byRoi.df$nVoxels)) 
+print(ratios_byRoiX.df)
+suvr.lst <- compute_selected_SUVR(ratios_byRoiX.df)
+#
+# save these results out 
+suvr_aggr.df$Description[3] <- "SUVR over all neo-cortical gray matter"
+suvr_aggr.df$Abbrev[3] <- "NA"
+suvr_aggr.df$LabelNo[3] <- NA
+suvr_aggr.df$LabelName[3] <- "SUVR"
+suvr_aggr.df$nVoxels[3] <- suvr.lst$totalVoxels
+suvr_aggr.df$suvr[3] <- suvr.lst$suvr
+suvr_aggr.df$isCerebrum[3] <- 0
+suvr_aggr.df$isCortical[3] <- 0
+suvr_aggr.df$isNeoCortical[3] <- 1
+suvr_aggr.df$isSecondaryLbl[3] <- 0
+print(suvr_aggr.df)
+#
+# write selected values to the logfile
+llogger <- loris_logger_logMessage(progname, O$keyname, 'PiB', O$scanDate, 
+                                       'suvr_over_neo-cortical_gm', suvr.lst$suvr, llogger)
+
+
+
+# write out the results to a csv file (append keyname and dirname first)
+ratios_byRoi.df <- rbind(ratios_byRoi.df, suvr_aggr.df)
+ratios_byRoi.df <- cbind(uniqueId, keyname=O$keyname, dirname=O$pib_dirname, ratios_byRoi.df)
+#
+csvFilename <- paste(O$keyname, "_pibRatios_refCerebGM_SUVRs_", AAL_LABELS_VERSION, ".csv", sep="")
+ratioFilenameFullPath <- file.path(pibDir_ratiosDir, csvFilename)
+write.csv(ratios_byRoi.df, ratioFilenameFullPath, row.names=FALSE)
+
+
+# close log file
+if ( log_file != "loggingBySGE" ) {
+   sink()
+}
+
+
+# set the status to "finished"
+status_filename_finished <- "beagle_pib_compute_SUVR_JobStatus.finished"
+status_filename_finished <- file.path(pibDir_logsDir, status_filename_finished)
+file.rename(status_filename_running, status_filename_finished)
+
+
+# log a 'done' message to the subject's master logfile, and then write out logfile
+llogger <- loris_logger_logStopMessage(progname, O$keyname, 'PiB', O$scanDate, llogger)
+loris_logger_saveToFile(O$keyname, llogger, settings)
+
+# print the log entries (for fun)
+logger.df <- loris_logger_loadFromFileAsDataFrame(O$keyname, settings)
+options(width=9999)
+print(logger.df)
+
+
+q(save="no")
+

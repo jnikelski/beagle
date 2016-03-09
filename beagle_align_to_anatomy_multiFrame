@@ -1,0 +1,309 @@
+#!/usr/bin/env ruby
+# ==============================================================================
+# Purpose:
+#     Align a multi-frame dynamic volume to a given MRI scan.
+# Note that at the time that this script was written, the only
+# multi-frame dynamic volume used by Loris was PiB data. As such,
+# variable names are often prefixed with "pib".
+#
+# ==============================================================================
+#
+
+require 'optparse'
+require 'ostruct'
+require 'pathname'
+require 'fileutils'
+require 'tmpdir'            # needed for Dir::tmpdir
+
+# these libs are pointed to by the RUBYLIB env variable
+require 'hclab_function_library'
+
+# start of main script
+begin
+   opt                     = OpenStruct.new{}  # store input options
+   opt.verbose             = false
+   opt.debug               = false
+   opt.fake                = false
+   opt.tmpDir              = ""          # work directory
+   opt.outDir              = "."         # output directory
+   opt.civetDir            = "".to_s     # civet root directory containing all scanIds
+   opt.civetScanId         = ""          # civet subdirectory name for a given scan
+   opt.civetPrefix         = "HCLab_"    # prefix to be used for all civet-generated volume names
+   opt.xfmToNativeMRI      = false       # transform dynamic volume to match native MRI
+   opt.xfmToIcbmMRI        = false       # transform dynamic volume to match ICBM-152 MRI
+   opt.minctraccOpts       = "-lsq6  -mi "     # options passed through to minctracc
+   opt.logfile             = ""          # logfile
+
+   # List of arguments.
+   opts = OptionParser.new do |opts|
+      opts.banner = "Usage: #{$0} [Options]   dynamic_volume_in.mnc   dynamic_to_native_MRI.xfm"
+      opts.separator ""
+      opts.separator "Options:"
+
+      opts.on('-v', '--[no-]verbose', 'Run verbosely') { |v| opt.verbose = v }
+
+      opts.on('-d', '--debug', 'Print pedantic debugging messages') { |d| opt.debug = d }
+
+      opts.on('-f', '--fake', 'Do not actually execute the commands') { |f| opt.fake = f }
+
+      opts.on('--xfmToNativeMRI', 'Transform dynamic volume to match native MRI') { |xfm1| opt.xfmToNativeMRI = xfm1 }
+
+      opts.on('--xfmToIcbmMRI', 'Transform dynamic volume to match ICBM-152 MRI') { |xfm2| opt.xfmToIcbmMRI = xfm2 }
+
+      opts.on('--minctraccOpts minctracc_opts', "Options passed through to minctracc (default is \"-lsq6\")") do |traccopts|
+         opt.minctraccOpts = traccopts
+         puts "** minctracc options: " + opt.minctraccOpts if opt.verbose
+      end
+
+      opts.on('--civetPrefix civet_prefix', "Civet filenaming prefix") do |civetPrefix|
+         opt.civetPrefix = civetPrefix.to_s
+         puts "** Civet filenaming prefix: " + opt.civetPrefix if opt.verbose
+      end
+
+      opts.on('--civetDir civet_root_dir', "civet root directory containing all scanIds") do |civetD|
+         opt.civetDir = civetD.to_s << '/'
+         puts "** civetDir: " + opt.civetDir if opt.verbose
+      end
+
+      opts.on('--civetScanId civet_scan_ID', "civet subdirectory name for a given scan") do |civetID|
+         opt.civetScanId = civetID.to_s
+         puts "** civetScanId: " + opt.civetScanId if opt.verbose
+      end
+
+      opts.on('--outDir output_dir', "Output directory (default is '#{opt.outDir}')") do |outDir|
+         opt.outDir = outDir.to_s << '/'
+         puts "** OutDir: " + opt.outDir if opt.verbose
+      end
+
+      opts.on('--tmpDir tmpDir', "Temp work directory (default is system tmp dir)") do |x|
+         opt.tmpDir = x.to_s << '/'
+         puts "** tmpDir: " + opt.tmpDir if opt.verbose
+      end
+
+      opts.on('--logfile logfile', "Logfile name (by default, log to screen") do |lf|
+         opt.logfile = lf.to_s
+         puts "** logfile: " + opt.logfile if opt.verbose
+      end
+
+      opts.on_tail("-h", "--help", "Show this very helpful help message") do
+         puts opts
+         exit
+      end
+
+   end  # OptionParser
+
+   # run parse!() method in the OptionParser object, passing ARGV
+   # NB: the "!" in parse!() removes the switches from ARGV
+   puts "Before OptionParser start ..." if opt.debug
+   begin
+      opts.parse!(ARGV)
+   rescue Exception => e
+      puts e, "", opts
+      exit
+   end
+
+
+   # INITIALIZATION
+
+   # make sure that the input args were specified and are valid
+   dyn_vol_in = ARGV[0]
+   xfm_file_out = ARGV[1]
+
+   puts "Input dynamic volume is: #{dyn_vol_in}" if opt.debug
+   puts "xfm file out is: #{xfm_file_out}" if opt.debug
+   if (dyn_vol_in.nil? or xfm_file_out.nil?) then
+      puts "\n!!! Please specify both dynamic input volume and xfm output file names"
+      puts opts
+      exit
+   end
+
+   # input volume is minc, yes?
+   dyn_vol_extname = File.extname(dyn_vol_in)
+   dyn_vol_basename = File.basename(dyn_vol_in, dyn_vol_extname)
+   if (dyn_vol_extname != '.mnc') then
+      puts "\n!!! Ummm ... I believe the first file must be a minc volume. Yes?"
+      puts opts
+      exit
+   end
+
+   # make sure that we only have a filename for the output xfm
+   path, filename = File.split(xfm_file_out)
+   if (path != '.') then
+      puts "\n!!! Do not include full path for the xfm output filename"
+      puts "    The xfm file shall be written to the output dir"
+      puts opts
+      exit
+   end
+
+   # check if the output directory exists; if not, create it
+   if !File.exists?(opt.outDir) then Dir.mkdir(opt.outDir) end
+
+   # check if the temporary working directory exists; if not, create it
+   if (opt.tmpDir.empty?) then
+      opt.tmpDir = Dir::tmpdir + '/' + Process.pid.to_s + '/'
+   end
+   if !File.exists?(opt.tmpDir) then Dir.mkdir(opt.tmpDir) end
+
+   # civet-related options have been specified?
+   if (opt.civetDir.empty? or opt.civetScanId.empty? ) then
+      puts "\n!!! Please specify both civet-related options"
+      puts opts
+      exit
+   end
+
+   # ensure that the civet directory exists (and is a directory)
+   if (!File.exists?(opt.civetDir) or !File.directory?(opt.civetDir)) then
+      puts "\n!!! Please specify a valid civet root directory"
+      puts opts
+      exit
+   end
+
+   # is the civet scan-id option reasonable?
+   # ... first, append the scan-id to the civet root dir name, then check
+   opt.civetScanIdFullpath = opt.civetDir + opt.civetScanId
+   if (!File.exists?(opt.civetScanIdFullpath) or !File.directory?(opt.civetScanIdFullpath)) then
+      puts "\n!!! Please specify a valid civet scan-ID  sub-directory"
+      puts "--- Directory #{opt.civetScanId} seems troublesome"
+      puts opts
+      exit
+   end
+
+   # print out some summary info about the dynamic volume (if verbose)
+   if (opt.verbose) then
+      puts "\n\n"
+      puts "  ---------------------" + "-"*(dyn_vol_in.length)
+      puts "    Processing volume: #{dyn_vol_in}"
+      puts "  ---------------------" + "-"*(dyn_vol_in.length)
+  
+      puts "\nProcessing Options:"
+      puts "   **                         Verbose:    ON" if opt.verbose
+      puts "   **                           Debug:    ON" if opt.debug
+      puts "   **                            Fake:    ON" if opt.fake
+      puts "   **                  xfmToNativeMRI:    ON" if opt.xfmToNativeMRI
+      puts "   **                    xfmToIcbmMRI:    ON" if opt.xfmToIcbmMRI
+      puts "   **         Civet filenaming prefix:    " + opt.civetPrefix
+      puts "   **            Civet root directory:    " + opt.civetDir
+      puts "   **                   Civet scan ID:    " + opt.civetScanId
+      puts "   **                Output directory:    " + opt.outDir
+      puts "   **             Temp work directory:    " + opt.tmpDir
+  
+      puts "\nDynamic Volume Details:"
+      nFrames = `mincinfo -dimlength time #{dyn_vol_in}`
+      nFrames = nFrames.to_i
+      puts "   **         Number of frames:    #{nFrames}"
+      puts "\n\n"
+   end
+
+   # extract high-signal frames from the MC dynamic volume using mincreshape
+   #
+   # NB: If we have a volume containing less than 20 frames,
+   # assume that we are dealing with an acquisition protocol in which the
+   # acquisition has been started some time after bolus injection.
+   # As such, extract all frames, from the beginning.
+   # Note -- frame numbers are zero-relative.
+   frame_start = 4
+   frame_count = 20
+   if (nFrames.to_i < 20) then
+      frame_start = 0
+      frame_count = nFrames.to_i
+   end
+
+   # do the extraction
+   puts "\n** extracting #{frame_count} high signal frames from #{dyn_vol_in} ..." if opt.verbose
+   cmd = "mincreshape -verbose -clobber  -dimrange time=#{frame_start},#{frame_count} "
+   cmd << "#{dyn_vol_in} "
+   cmd << "#{opt.tmpDir}/pibX.mnc "
+   do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
+
+   # average the high-signal extracted frames by collapsing the "time" dimension
+   puts "\n** creating an average of the extracted frames ..."  if opt.verbose
+   cmd = "mincaverage -verbose -clobber -nocopy_header -avgdim time  "
+   cmd << "#{opt.tmpDir}/pibX.mnc "
+   cmd << "#{opt.tmpDir}/pibXmean.mnc "
+   do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
+
+   # align dynamic mean volume to native MRI (**must** use NUC-corrected volume)
+   native_mri_pathname = opt.civetDir + opt.civetScanId + '/native/'
+   native_mri_volname = opt.civetPrefix + opt.civetScanId + '_t1_nuc.mnc'
+   native_mri_fullname = native_mri_pathname + native_mri_volname
+   #
+   native_mriMask_pathname = opt.civetDir + opt.civetScanId + '/mask/'
+   native_mriMask_volname = opt.civetPrefix + opt.civetScanId + '_skull_mask_native.mnc'
+   native_mriMask_fullname = native_mriMask_pathname + native_mriMask_volname
+   #
+   puts "\n** align dynamic mean volume to native MRI (#{native_mri_volname} -- from Civet) ..."  if opt.verbose
+   cmd = "minctracc -verbose 3 -clobber -simplex 5   "
+   cmd << "#{opt.minctraccOpts}  "
+   cmd << "-est_center -est_translations  "
+   cmd << "-model_mask #{native_mriMask_fullname} "
+   cmd << "#{opt.tmpDir}/pibXmean.mnc "
+   cmd << "#{native_mri_fullname} "
+   cmd << "#{opt.outDir}/#{xfm_file_out} "
+   do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
+
+   # apply the xfm (if requested) and transform the dynamic volume into
+   # native MRI space.
+   # ... include a transformation of the mean volume to allow for an
+   # ... easy registration check using 'register'
+   if (opt.xfmToNativeMRI) then
+      puts "\n** resamplng mean dynamic volume to native MRI space ..."   if opt.verbose
+      cmd = "mincresample -clobber -verbose -tfm_input_sampling  "
+      cmd << "-transform #{opt.outDir}/#{xfm_file_out}  "
+      cmd << "-like #{native_mri_fullname}  "
+      cmd << "#{opt.tmpDir}/pibXmean.mnc  "
+      cmd << "#{opt.outDir}/#{dyn_vol_basename}_mean_mriAligned.mnc "
+      do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
+  
+      puts "\n** resamplng input dynamic volume ..."   if opt.verbose
+      cmd = "mincresample -clobber -verbose  -tfm_input_sampling   "
+      cmd << "-transform #{opt.outDir}/#{xfm_file_out} "
+      cmd << "-like #{native_mri_fullname}  "
+      cmd << "#{dyn_vol_in} "
+      cmd << "#{opt.outDir}/#{dyn_vol_basename}_mriAligned.mnc "
+      do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
+   end
+
+   # apply the xfm (if requested) and transform into ICBM-152 space.
+   # ... As above, do this for the mean volume for registration
+   # ... checking purposes.
+   if (opt.xfmToIcbmMRI) then
+
+      # first we will need to concat our transform with that from civet
+      # ... remember that order matters
+      icbm_xfm_pathname = opt.civetDir + opt.civetScanId + '/transforms/linear/'
+      icbm_xfm_filename = opt.civetPrefix + opt.civetScanId + '_t1_tal.xfm'
+      icbm_xfm_filename = icbm_xfm_pathname + icbm_xfm_filename
+
+      icbm_mri_pathname = opt.civetDir + opt.civetScanId + '/final/'
+      icbm_mri_volname = opt.civetPrefix + opt.civetScanId + '_t1_final.mnc'
+      icbm_mri_fullname = icbm_mri_pathname + icbm_mri_volname
+
+      puts "\n** concatenating xfms ..."   if opt.verbose
+      cmd = "xfmconcat    "
+      cmd << "#{opt.outDir}/#{xfm_file_out}  "
+      cmd << "#{icbm_xfm_filename}  "
+      cmd << "#{opt.outDir}/#{dyn_vol_basename}_pib2tal.xfm "
+      do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
+
+      puts "\n** resamplng mean dynamic volume to ICBM-152 space ..."   if opt.verbose
+      cmd = "mincresample -clobber -verbose -tfm_input_sampling  "
+      cmd << "-transform  #{opt.outDir}/#{dyn_vol_basename}_pib2tal.xfm "
+      cmd << "-like #{icbm_mri_fullname}  "
+      cmd << "#{opt.tmpDir}/pibXmean.mnc  "
+      cmd << "#{opt.outDir}/#{dyn_vol_basename}_mean_talAligned.mnc "
+      do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
+
+      puts "\n** resamplng input dynamic volume ..."   if opt.verbose
+      cmd = "mincresample -clobber -verbose  -tfm_input_sampling   "
+      cmd << "-transform  #{opt.outDir}/#{dyn_vol_basename}_pib2tal.xfm  "
+      cmd << "-like #{icbm_mri_fullname}  "
+      cmd << "#{dyn_vol_in} "
+      cmd << "#{opt.outDir}/#{dyn_vol_basename}_talAligned.mnc "
+      do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
+   end
+
+rescue RuntimeError => e
+   STDERR.puts e
+   exit 1
+end  #main()
+

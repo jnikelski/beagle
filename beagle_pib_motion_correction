@@ -1,0 +1,390 @@
+#!/usr/bin/env ruby
+
+require 'optparse'
+require 'ostruct'
+require 'pathname'
+require 'fileutils'
+
+# these libs are pointed to by the RUBYLIB env variable
+require 'hclab_function_library'
+
+# start of main script
+begin
+   opt                     = OpenStruct.new{}  # store input options
+   opt.verbose             = false
+   opt.debug               = false
+   opt.fake                = false
+   opt.tmpDir              = "tmp/"       # work directory
+   opt.keepTmp             = false       # keep temp dir when done?
+   opt.logfile             = nil         # logfile
+   opt.blur                = 5           # blurring filter
+   opt.target              = 10          # target frame number (1-relative)
+   opt.start               = 4           # starting frame to correct (1-relative)
+   opt.gradient            = false       # match using gradient volumes
+   opt.intensity           = true        # match using intensity values
+   opt.objFunc             = "mi"        # optimization objective function (from minctracc)
+
+   # List of arguments.
+   opts = OptionParser.new do |opts|
+      opts.banner = "Usage: #{$0} [Options]   uncorrected_input_volume.mnc   corrected_output_volume.mnc"
+      opts.separator ""
+      opts.separator "Options:"
+
+      opts.on('-v', '--[no-]verbose', 'Run verbosely') { |v| opt.verbose = v }
+
+      opts.on('-d', '--debug', 'Print pedantic debugging messages') { |d| opt.debug = d }
+
+      opts.on('-f', '--fake', 'Do not actually execute the commands') { |f| opt.fake = f }
+
+      opts.on('--gradient', 'Match on gradient') do |g|
+         opt.gradient = true
+         opt.intensity = false
+      end
+
+      opts.on('--intensity', 'Match on intensity  (default)') do |i|
+         opt.intensity = true
+         opt.gradient = false
+      end
+
+      opts.on('--blur FWHM', "Blurring kernel size  (default = #{opt.blur})") do |b|
+         opt.blur = b.to_i
+         puts "** Blurring kernel: " + opt.blur.to_s if opt.verbose
+      end
+
+      opts.on('--target frame_no', "Target frame number  (1-relative, default = #{opt.target})") do |t|
+         opt.target = t.to_i
+         puts "** Target frame number: " + opt.target.to_s if opt.verbose
+      end
+
+      opts.on('--start frame_no', "Start frame number  (default = #{opt.start})") do |s|
+         opt.start = s.to_i
+         puts "** Start frame number: " + opt.start.to_s if opt.verbose
+      end
+
+      opts.on('--optimize objFunc', "minctracc optimization objective function (default = '#{opt.objFunc}')") do |of|
+         opt.objFunc = of
+         puts "** optimization objective function: " + opt.objFunc if opt.verbose
+      end
+
+      opts.on('--tmpDir tmpDir', "Temp work directory (default is '#{opt.tmpDir}')") do |x|
+         opt.tmpDir = x.to_s << '/'
+         puts "** tmpDir: " + opt.tmpDir if opt.verbose
+      end
+
+      opts.on('--keepTmp', 'Do not delete tmpDir when done  (default = remove it)') { |t| opt.keepTmp = t }
+
+      opts.on('--logfile logfile', "Logfile name (by default, log to screen") do |lf|
+         opt.logfile = lf.to_s
+         puts "** logfile: " + opt.logfile if opt.verbose
+      end
+
+      opts.on_tail("-h", "--help", "Show this very helpful help message") do
+         puts opts
+         exit
+      end
+
+   end  #OptionParser
+
+  # run parse!() method in the OptionParser object, passing ARGV
+  # NB: the "!" in parse!() removes the switches from ARGV
+  puts "Before OptionParser start ..." if opt.debug
+   begin
+      opts.parse!(ARGV)
+   rescue Exception => e
+      puts e, "", opts
+      exit
+   end
+
+
+   # INITIALIZATION
+   #
+   # start off by printing out some summary info about the dynamic volume
+
+   in_vol = ARGV[0]
+   out_vol = ARGV[1]
+
+   puts "in_vol is: #{in_vol}" if opt.debug
+   puts "out_vol is: #{out_vol}" if opt.debug
+   if (in_vol.nil? or out_vol.nil?) then
+      puts "!!! Please specify input and output mnc volume names"
+      puts opts
+      exit
+   end
+
+   # did user specify a logfile?
+   # If not, send stuff to stdout, else open the logile
+   if (opt.logfile.nil?) then
+      log = $stdout
+   else
+      log = File.new(opt.logfile, "w")
+   end
+
+   log.puts "\n\n"
+   log.puts "-----------------------------------------"
+   log.puts "    Processing volume: #{in_vol}"
+   log.puts "-----------------------------------------"
+
+   log.puts "\nProcessing Options:"
+   log.puts "   **     Blurring kernel size (FWHM):    " + opt.blur.to_s
+   log.puts "   **             Target frame number:    " + opt.target.to_s
+   log.puts "   **              Start frame number:    " + opt.start.to_s
+   log.puts "   **               Optimize based on:    " + "Intensity" if opt.intensity
+   log.puts "   **               Optimize based on:    " + "Gradients" if opt.gradient
+   log.puts "   ** Optimization objective function:    " + opt.objFunc
+   log.puts "   **      Temp work directory tmpDir:    " + opt.tmpDir
+
+   log.puts "\nDynamic Volume Details:"
+   no_frames = `mincinfo -dimlength time #{in_vol}`
+   no_frames = no_frames.to_i
+   log.puts "   **         Number of frames:    #{no_frames}"
+   #
+   frame_start_times = `mincinfo -varvalues time #{in_vol}`
+   log.puts "   **        Frame start times:    "
+   frame_start_times.each {|frame_time| print frame_time.to_i, " "}
+   log.puts
+   #
+   frame_duration = `mincinfo -varvalues time-width #{in_vol}`
+   log.puts "   **   Frame durations (secs):"
+   frame_duration.each {|dur| print dur.to_i, " "}
+   log.puts "\n\n"
+
+   #
+   # create some useful vectors of frame numbers
+   frame_seq_all = Array(1..no_frames)
+   if opt.debug
+      p "*** frame_seq_all:"
+      frame_seq_all.each {|f| print f, " "}
+      puts
+   end
+   #
+   # make frame-id relative to the target frame
+   frame_seq_all_rel = []
+   frame_seq_all.each {|fs| frame_seq_all_rel << fs - opt.target}
+   if opt.debug
+      p "*** frame_seq_all_rel:"
+      frame_seq_all_rel.each {|f| print f, " "}
+      puts
+   end
+
+   # select only the subset of frames defined by (-start, no_frames)
+   frame_seq = Array(opt.start..no_frames)
+   if opt.debug
+      p "*** frame_seq:"
+      frame_seq.each {|f| print f, " "}
+      puts
+   end
+   #
+   # make frame-id relative to the target frame
+   frame_seq_rel = []
+   frame_seq.each {|fs| frame_seq_rel << fs - opt.target}
+   if opt.debug
+      p "*** frame_seq_rel:"
+      frame_seq_rel.each {|f| print f, " "}
+      puts
+   end
+   log.puts "-----------------------------------------"
+
+   # do some basic validation
+   # ... target frame within range?
+   if (opt.target <= 0 || opt.target > no_frames) then
+      puts "!!! Invalid target frame specified ..."
+      puts "!!! valid range for volume #{in_vol} is between (1, #{no_frames})"
+      exit 1
+   end
+
+   # ... start less than target?
+   if (opt.start > opt.target) then
+      puts "!!! Invalid start frame specified ..."
+      puts "!!! start frame number must be less than or equal to target frame number"
+      exit 1
+   end
+
+   #
+   # check if the temporary working directory exists; if not, create it
+   if !File.exists?(opt.tmpDir) then Dir.mkdir(opt.tmpDir) end
+
+   #
+   # extract frames from the input volume
+   log.puts "\n\n*** extract frames from input dynamic volume"
+   frame_seq_all_rel.each_with_index do |frame, ndx|
+      cmd = "mincreshape -verbose -clobber #{in_vol} #{opt.tmpDir}/frame_#{frame}.mnc -dimrange time=#{ndx},1"
+      do_cmd(cmd, opt.verbose, opt.fake, log)
+   end
+
+   #
+   # if blurring has been requested, blur all volumes that we care about
+   #    Note: blurring appends a volume suffix of "_blur.mnc" to the base output filename
+   #          gradient appends a suffix of "_dxyz.mnc"
+   log.puts "\n\n*** blur and generate gradient volumes, as desired"
+   if (opt.blur > 0 ) then
+      grad_switch = opt.gradient ? "-gradient" : ""
+      frame_seq_rel.each do |frame|
+         cmd = "mincblur -clobber -verbose -no_apodize  -fwhm #{opt.blur} #{grad_switch}  "
+         cmd << "#{opt.tmpDir}/frame_#{frame}.mnc "
+         cmd << "#{opt.tmpDir}/frame_#{frame}"
+         do_cmd(cmd, opt.verbose, opt.fake, log)
+      end
+   end
+   #
+   # if gradient has been requested (but without a blur), create gradient volumes now
+   #     Note: mincblur will not accept a blur=0, so set it to "1"
+   #           .... so we will get a "_blur" volume even if we don't want it
+   if (opt.gradient  and opt.blur == 0 )  then
+      frame_seq_rel.each do |frame|
+         cmd = "mincblur -clobber -no_apodize -fwhm 1 -gradient  "
+         cmd << "#{opt.tmpDir}/frame_#{frame}.mnc "
+         cmd << "#{opt.tmpDir}/frame_#{frame}"
+         do_cmd(cmd, opt.verbose, opt.fake, log)
+      end
+   end
+
+   # Cool. Before we start with the resampling, we need to know the suffix of input volumes
+   vol_suffix = ".mnc"
+   vol_suffix = "_blur.mnc" if (opt.blur > 0)
+   vol_suffix = "_dxyz.mnc" if (opt.gradient)
+   log.puts "vol_suffix: #{vol_suffix}" if opt.debug
+
+   # create a "resampled" version of the target, so that the loops work
+   #    cmd = "ln -s   #{opt.tmpDir}/frame_0#{vol_suffix}.mnc  #{opt.tmpDir}/frame_0#{vol_suffix}_rsl.mnc "
+   #    do_cmd(cmd, opt.verbose, opt.fake)
+   tgt = 'frame_0' + vol_suffix
+   tgt_rsl = opt.tmpDir + 'frame_0' + '_rsl.mnc'
+   if (!opt.fake)
+      FileUtils.ln_s(tgt, tgt_rsl)
+   end
+
+   # resampling happens here
+   # we use minctracc to compare a given frame against the adjacent (resampled) frame
+   # we do this with 2 loops
+   # => (1) looping backwards from the target (negative frame indices)
+   # => (2) looping forwards from the target (positive frame indices)
+   #
+   # when all is done, we apply the xfms against the input frames
+   # => we cannot us the current frames because they might be blurred, or be _dxyz volumes
+
+   # create a dictionary/hash to fold xfm filenames and source-target frame numbers
+   xfm_names = {}
+   xfm_srcTgt_mapping = {}
+
+   # first loop --> loop backwards from the target
+   log.puts "\n\n*** generate transforms to adjacent frames"
+   if (opt.start < opt.target) then
+      -1.downto(frame_seq_rel.min) do |frame|
+         cmd = "minctracc   -clobber  -verbose 1 -simplex 3  -lsq6  -identity -nearest_neighbour -#{opt.objFunc}  "
+         cmd << "#{opt.tmpDir}/frame_#{frame}#{vol_suffix}  "
+         cmd << "#{opt.tmpDir}/frame_#{frame+1}_rsl.mnc  "
+         cmd << "#{opt.tmpDir}/transform_#{frame}_to_#{frame+1}.xfm"
+         do_cmd(cmd, opt.verbose, opt.fake, log)
+         xfm_names[frame] = "transform_" + frame.to_s + "_to_" + (frame+1).to_s + ".xfm"
+         xfm_srcTgt_mapping[frame] = frame+1
+
+         # apply the xfm now, since the next frame is going to align to the resampled adjacent
+         cmd = "mincresample -clobber -verbose -use_input_sampling  -nearest_neighbour  "
+         cmd << "-transform #{opt.tmpDir}/transform_#{frame}_to_#{frame+1}.xfm  "
+         cmd << "#{opt.tmpDir}/frame_#{frame}#{vol_suffix}   "
+         cmd << "#{opt.tmpDir}/frame_#{frame}_rsl.mnc "
+         do_cmd(cmd, opt.verbose, opt.fake, log)
+      end
+   end
+
+   # second loop --> loop forwards from the target
+   if (opt.target < no_frames) then
+      1.upto(frame_seq_rel.max) do |frame|
+         cmd = "minctracc   -clobber  -verbose 1 -simplex 3  -lsq6  -identity -nearest_neighbour -#{opt.objFunc}  "
+         cmd << "#{opt.tmpDir}/frame_#{frame}#{vol_suffix}  "
+         cmd << "#{opt.tmpDir}/frame_#{frame-1}_rsl.mnc  "
+         cmd << "#{opt.tmpDir}/transform_#{frame}_to_#{frame-1}.xfm"
+         do_cmd(cmd, opt.verbose, opt.fake, log)
+         xfm_names[frame] = "transform_" + frame.to_s + "_to_" + (frame-1).to_s + ".xfm"
+         xfm_srcTgt_mapping[frame] = frame-1
+
+         # apply the xfm now, since the next frame is going to align to the resampled adjacent
+         cmd = "mincresample -clobber -verbose -use_input_sampling  -nearest_neighbour  "
+         cmd << "-transform #{opt.tmpDir}/transform_#{frame}_to_#{frame-1}.xfm  "
+         cmd << "#{opt.tmpDir}/frame_#{frame}#{vol_suffix}   "
+         cmd << "#{opt.tmpDir}/frame_#{frame}_rsl.mnc "
+         do_cmd(cmd, opt.verbose, opt.fake, log)
+      end
+   end
+
+   # Great. We now have all of the xfms that we need.
+   # Now, lets loop over all of the original frames and apply the xfms to them
+   #
+   # Specifically, loop over ALL frames, and ...
+   # => if there is an xfm for that frame, apply it and add its name to the final frame array
+   # => else, we are dealing either with an early unprocessed frame or the target,
+   # =>    in which case, just store the original frame name into the final frame array
+   # => NOTE: the moving of frame names to the final array makes the concatenation step easier.
+   log.puts "\n\n*** apply transforms to original input frames"
+   fileList = File.new("#{opt.tmpDir}/fileList.txt", 'w')
+   frame_seq_all_rel.each do |frame|
+      # don't try to reample the target frame itself
+      if ( xfm_names.key?(frame) ) then
+         cmd = "mincresample -clobber -verbose -use_input_sampling  -nearest_neighbour  "
+         cmd << "-transform #{opt.tmpDir}/#{xfm_names[frame]}  "
+         cmd << "#{opt.tmpDir}/frame_#{frame}.mnc   "
+         cmd << "#{opt.tmpDir}/frame_#{frame}_final.mnc "
+         do_cmd(cmd, opt.verbose, opt.fake, log)
+         fileList.puts opt.tmpDir + "frame_" + frame.to_s + "_final.mnc"
+      else
+         fileList.puts opt.tmpDir + "frame_" + frame.to_s + ".mnc"
+      end
+   end
+   fileList.close
+
+   # Done.  Now just glue all of the frames together again into a single dynamic
+   # volume.  Remember:
+   # => (1) Include the motion-corrected frames
+   # => (2) Include the non-motion-corrected frames
+   # => (3) Include the target frame (original)
+   #
+   log.puts "\n\n*** re-creating multi-frame dynamic volume"
+   cmd = "mincconcat -concat time  -filelist  #{opt.tmpDir}/fileList.txt  #{out_vol}"
+   do_cmd(cmd, opt.verbose, opt.fake, log)
+
+   #
+   # OK. Done. Before we terminate, print out a report of translations and rotations
+   # ... for each frame
+   log.puts "\n\n*** create xfm report ...\n\n"
+   log.puts "                      Translations (mm)                                        Rotations (degrees)"
+   log.puts "Frame #    x               y               z                        x              y               z"
+   xfmFilename = ""
+   frame_seq_all.each do |frame|
+      # convert to a relative frame number
+      relFrameNbrNdx = frame_seq_all.index(frame)
+      relFrameNbr = frame_seq_all_rel[relFrameNbrNdx]
+      # do we actally have an xfm file for this?
+      if ( xfm_srcTgt_mapping.key?(relFrameNbr) ) then
+         params = `xfm2param #{opt.tmpDir}/transform_#{relFrameNbr}_to_#{xfm_srcTgt_mapping[relFrameNbr]}.xfm`
+         #        puts "\n ** #{params} \n\n " if opt.debug
+
+         # split the param output into separate lines,
+         linesOut = params.split("\n")
+         translationLine = linesOut[2]
+         rotationLine = linesOut[3]
+         # split into individual xyz elements
+         tt,tx,ty,tz = translationLine.split
+         rr,rx,ry,rz = rotationLine.split
+         # format and print
+         log.puts "#{frame} \t #{tx.rjust(8)} \t #{ty.rjust(8)} \t #{tz.rjust(8)} \t\t #{rx.rjust(8)} \t #{ry.rjust(8)} \t #{rz.rjust(8)}\n"
+      else
+         dummy = " -.-----"
+         log.puts "#{frame} \t #{dummy.rjust(8)} \t #{dummy.rjust(8)} \t #{dummy.rjust(8)} \t\t #{dummy.rjust(8)} \t #{dummy.rjust(8)} \t #{dummy.rjust(8)}"
+      end
+   end
+
+   # remove the tmpDir, unless requested not to
+   unless (opt.keepTmp) then
+      FileUtils.rm_rf(opt.tmpDir)
+   end
+
+   # close logile (if specified)
+   if (!opt.logfile.nil?) then
+      log.close
+   end
+
+rescue RuntimeError => e
+   STDERR.puts e
+   exit 1
+end  #main()
+
