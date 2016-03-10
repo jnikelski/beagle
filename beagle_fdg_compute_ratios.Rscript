@@ -1,4 +1,4 @@
-#!/usr/bin/Rscript   --default-packages=utils,methods,base,stats,grDevices
+#!/opt/R/Rscript   --default-packages=utils,methods,base,stats,grDevices
 # ==============================================================================
 # PURPOSE:
 #
