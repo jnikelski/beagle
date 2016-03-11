@@ -330,7 +330,7 @@ begin
    tmpOutLh_dir = File.join(tmp_dir_fullPath, 'images_Lh')
    FileUtils.mkdir_p(tmpOutLh_dir)
    #
-   cmd = "hclab_make_surface_images  -dv  "
+   cmd = "hclab_make_surface_images  -dv --imgFlip "
    cmd << "--labels  "
    cmd << "--usercc  "
    cmd << "--colorMap=#{AAL_COLORMAP_FULLPATH}  "
@@ -349,7 +349,7 @@ begin
    tmpOutRh_dir = File.join(tmp_dir_fullPath, 'images_Rh')
    FileUtils.mkdir_p(tmpOutRh_dir)
    #
-   cmd = "hclab_make_surface_images  -dv  "
+   cmd = "hclab_make_surface_images  -dv --imgFlip "
    cmd << "--labels  "
    cmd << "--usercc  "
    cmd << "--colorMap=#{AAL_COLORMAP_FULLPATH}  "

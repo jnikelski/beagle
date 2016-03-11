@@ -1,3 +1,10 @@
+beagle_16.03.10
+ * changed hashbang in Rscripts to execute out of /opt/R/ facilitating multiple R versions 
+ * ... by changing the symbolic link in the setup script
+ * added a new *imgFlip* option to beagle_labels_fit_AAL to account for *ray_trace* 
+ * ... now writing out flipped images
+ * changed beagle_make_summary_report to send a fullpath to pdflatex
+
 beagle_14.04.16
  * massive rewrite of all scripts
  * transitioned to driving by subject, rather than by task

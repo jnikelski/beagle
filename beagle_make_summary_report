@@ -362,10 +362,11 @@ begin
    # run pdflatex a couple of times (for good measure) in order to
    # convert the .tex file to a .pdf file
    tex_filename = generated_filename_root + '.tex'
-   cmd = "pdflatex  #{tex_filename} "
+   tex_filename_fullPath = File.join(keynameTmp_dir_fullPath, tex_filename)
+   cmd = "pdflatex  #{tex_filename_fullPath} "
    do_cmd(cmd, opt.verbose, opt.fake)
    # ... and again
-   cmd = "pdflatex  #{tex_filename} "
+   cmd = "pdflatex  #{tex_filename_fullPath} "
    do_cmd(cmd, opt.verbose, opt.fake)
 
    # copy the newly minted pdf file to the subject root directory
