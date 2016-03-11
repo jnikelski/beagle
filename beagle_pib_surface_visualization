@@ -246,7 +246,7 @@ begin
 
 
       # create LH surface components
-      cmd = "hclab_make_surface_images   -v   "
+      cmd = "hclab_make_surface_images   -v --imgFlip "
       cmd << "--valueRange=#{PIB_SURFACE_VIZ_FLOOR},#{PIB_SURFACE_VIZ_CEILING}  "   # visualization threshold - low cutoff
       cmd << "--colorMap=#{opt.colorMap}  "     # maximum absolute value in the color coding
       cmd << "#{ratioVolume_fullPath}  "        # ratio volume
@@ -255,7 +255,7 @@ begin
       do_cmd(cmd, opt.verbose, opt.fake)
 
       # create RH surface components
-      cmd = "hclab_make_surface_images   -v   "
+      cmd = "hclab_make_surface_images   -v --imgFlip "
       cmd << "--valueRange=#{PIB_SURFACE_VIZ_FLOOR},#{PIB_SURFACE_VIZ_CEILING}  "   # visualization threshold - low cutoff
       cmd << "--colorMap=#{opt.colorMap}  "     # maximum absolute value in the color coding
       cmd << "#{ratioVolume_fullPath}  "        # ratio volume
@@ -286,7 +286,7 @@ begin
       FileUtils.mkdir_p(rh_images_dir)
 
       # create LH surface components
-      cmd = "hclab_make_surface_images   -v   "
+      cmd = "hclab_make_surface_images   -v --imgFlip "
       cmd << "--valueRange=#{PIB_SURFACE_VIZ_FLOOR},#{PIB_SURFACE_VIZ_CEILING}  "   # visualization threshold - low cutoff
       cmd << "--colorMap=#{opt.colorMap}  "     # maximum absolute value in the color coding
       cmd << "#{ratioVolume_fullPath}  "        # ratio volume
@@ -295,7 +295,7 @@ begin
       do_cmd(cmd, opt.verbose, opt.fake)
 
       # create RH surface components
-      cmd = "hclab_make_surface_images   -v   "
+      cmd = "hclab_make_surface_images   -v --imgFlip "
       cmd << "--valueRange=#{PIB_SURFACE_VIZ_FLOOR},#{PIB_SURFACE_VIZ_CEILING}  "   # visualization threshold - low cutoff
       cmd << "--colorMap=#{opt.colorMap}  "     # maximum absolute value in the color coding
       cmd << "#{ratioVolume_fullPath}  "        # ratio volume

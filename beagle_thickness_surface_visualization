@@ -44,7 +44,7 @@ def render_vector_onto_surface(pkt, keepTmp=false)
    do_cmd(cmd, pkt.verbose, pkt.fake)
 
    # create LH surface components
-   cmd = "hclab_make_surface_images   -v   "
+   cmd = "hclab_make_surface_images   -v --imgFlip "
    cmd << "--valueRange=#{pkt.vzRelNegT},#{pkt.vzRelPosT}  "   # visualization thresholds
    cmd << "--colorMap=#{pkt.vzColorMap}  "                  # maximum absolute value in the color coding
    cmd << "--underColr=#{pkt.vzUnderColr}  "
@@ -56,7 +56,7 @@ def render_vector_onto_surface(pkt, keepTmp=false)
    do_cmd(cmd, pkt.verbose, pkt.fake)
  
    # create RH surface components
-   cmd = "hclab_make_surface_images   -v   "
+   cmd = "hclab_make_surface_images   -v --imgFlip "
    cmd << "--valueRange=#{pkt.vzRelNegT},#{pkt.vzRelPosT}  "   # visualization thresholds
    cmd << "--colorMap=#{pkt.vzColorMap}  "                  # maximum absolute value in the color coding
    cmd << "--underColr=#{pkt.vzUnderColr}  "
