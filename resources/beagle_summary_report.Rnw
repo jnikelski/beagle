@@ -3,21 +3,13 @@
 
 %
 % If you have postscript graphics to include, load the graphicx package
-\usepackage[margin=1.5in, showframe=true]{geometry}
+\usepackage[margin=1.5in, showframe=false]{geometry}
 \usepackage{rotating}
-\usepackage{longtable}
 \usepackage{graphicx}
+\usepackage{longtable}
 
 \usepackage{fancyhdr}
 \pagestyle{fancy}
-
-\lhead[Andrew Roberts]{}
-\rhead[]{Andrew Roberts}
-\lhead[]{\today}
-\rhead[\today]{}
-\lfoot[\thepage]{}
-\rfoot[]{\thepage}
-
 
 
 \usepackage[final]{pdfpages}
@@ -25,8 +17,6 @@
 % use the new "caption" package (not "caption2")
 \usepackage[margin=10pt,font=small,labelfont=bf,labelsep=period]{caption}
 
-%\usepackage[round, longnamesfirst]{natbib}
-%\usepackage[round]{natbib}
 
 % this *is* a Sweave doc
 \usepackage{Sweave}
@@ -131,19 +121,44 @@ The Beagle processing pipeline is dynamically configured through a settings file
 <<echo=FALSE>>=
 library(xtable)
 settings.df <- data.frame(Setting=names(settings), Value=unlist(settings, use.names=FALSE))
-settingsXtab <- xtable(settings.df)
+settings.df <- settings.df[order(settings.df$Setting),]
+#
+# cutting the table into 3 pieces for display, because could not get the "longtable" package to work
+settingsXtab01 <- xtable(settings.df[1:39,], caption="Beagle Configuration Settings: 1")
+settingsXtab02 <- xtable(settings.df[40:79,], caption="Beagle Configuration Settings: 2")
+settingsXtab03 <- xtable(settings.df[80:nrow(settings.df),], caption="Beagle Configuration Settings: 3")
 @
 
 \scalebox{0.85}{ 
 
 <<results=tex, echo=FALSE>>=
-print(settingsXtab, include.rownames=FALSE, size="scriptsize", floating=FALSE)
+print(settingsXtab01, type="latex", size="scriptsize", include.rownames=FALSE, floating=FALSE)
+@
+} 
+
+\scalebox{0.85}{ 
+
+<<results=tex, echo=FALSE>>=
+print(settingsXtab02, type="latex", size="scriptsize", include.rownames=FALSE, floating=FALSE)
 @
 } 
 
 
+\scalebox{0.85}{ 
+
+<<results=tex, echo=FALSE>>=
+print(settingsXtab03, type="latex", size="scriptsize", include.rownames=FALSE, floating=FALSE)
+@
+} 
 
 \end{document}
+
+
+
+
+
+
+
 
 
 
