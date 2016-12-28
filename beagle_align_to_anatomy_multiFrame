@@ -279,7 +279,7 @@ begin
       icbm_mri_fullname = icbm_mri_pathname + icbm_mri_volname
 
       puts "\n** concatenating xfms ..."   if opt.verbose
-      cmd = "xfmconcat    "
+      cmd = "xfmconcat  -clobber  "
       cmd << "#{opt.outDir}/#{xfm_file_out}  "
       cmd << "#{icbm_xfm_filename}  "
       cmd << "#{opt.outDir}/#{dyn_vol_basename}_pib2tal.xfm "
