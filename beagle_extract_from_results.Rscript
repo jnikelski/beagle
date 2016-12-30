@@ -1,0 +1,177 @@
+#!/usr/bin/Rscript   --default-packages=utils,methods,base,stats,grDevices
+# ==============================================================================
+# PURPOSE:
+#
+usage_text <- 
+"\nbeagle_extract_from_results.Rscript [options] "
+#
+description_text <- 
+"\n\n   The purpose of this script is to, given an output directory. 
+loop over all subjects and so some sort of extra processing. Chances
+are that this processing will involve extracting information -- thus the
+name of this script.
+"
+#
+# ==============================================================================
+
+# Set options
+options(width=180)
+
+
+# <Parsing>
+#
+# parse the input line to grab our options and arguments
+suppressPackageStartupMessages(library("optparse"))
+#
+# set up a list of allowable options
+option_list <- list(
+   make_option(c("-v", "--verbose"), 
+         action="store_true", 
+         type="logical", default=FALSE, 
+         help="Generate all sorts of messages [default is *not* verbose]"),
+               
+   make_option(c("-d", "--debug"), 
+         action="store_true", 
+         type="logical", default=FALSE, 
+         help="Generate debug messages"),
+               
+   make_option(c("--settingsFile"), 
+         action="store", 
+         type="character", default=NULL, dest="settingsFile",
+         help="Fullpath to the Beagle pipeline settings file"),
+   
+   make_option(c("--beagleOutRootDir"), 
+               action="store", 
+               type="character", default=NULL, dest="beagleOutRootDir",
+               help="Fullpath to the Beagle output root dir containing the subject directories")
+)
+#
+#
+# ... create the parser, and then parse the command line
+header_text <- paste(usage_text, description_text, sep="")
+parser <- OptionParser(usage=header_text, option_list=option_list)
+optX <- parse_args(parser, args=commandArgs(trailingOnly=TRUE), positional_arguments=TRUE)
+
+# ... move options and args into separate, more convenient structures
+opts_in <- optX$options
+
+# fiddles for interactive devel
+#opts_in$settingsFile<-"/home/jnikelski/localData/joubertLab_processing/beagle/beagle_pipeline_14.04.16.settings"
+#opts_in$beagleOutRootDir<-"/home/jnikelski/localData/joubertLab_processing/beagle/xrun_beagle-20140416/results/"
+print(opts_in)
+
+#
+# </Parsing>
+
+
+
+
+
+# = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
+#
+
+# required args have been set?
+if ( is.null(opts_in$settingsFile) ) {
+  cat(sprintf("Beagle pipeline settings file not specified. We need that."))
+  q(save="no")
+}
+
+if ( is.null(opts_in$beagleOutRootDir) ) {
+  cat(sprintf("Beagle output directory not specified. We need that."))
+  q(save="no")
+}
+
+
+# load the HCLab beagle.statistics Analyis library
+library(beagle.statistics)
+#suppressPackageStartupMessages(library(beagle.statistics))  
+
+
+# read the main Beagle pipeline settings file 
+
+if (opts_in$debug) cat(sprintf("BEFORE settings load\n"))
+settings <- read_beagle_settings(opts_in$settingsFile, verbose=TRUE)
+if (opts_in$debug) {
+  cat(sprintf("AFTER settings load\n"))
+  print(settings)
+}
+
+# massage some settings and rename
+CIVET_SURFACE_NO_OF_VERTICES_LEFT <- as.numeric(settings$CIVET_SURFACE_NO_OF_VERTICES_LEFT)
+CIVET_SURFACE_NO_OF_VERTICES_RIGHT <- as.numeric(settings$CIVET_SURFACE_NO_OF_VERTICES_RIGHT)
+CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN <- as.numeric(settings$CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN)
+
+# loop over all subject directories in output dir
+for (subjectDir in list.dirs(path=opts_in$beagleOutRootDir, full.names=TRUE, recursive=FALSE)) {
+  if (opts_in$verbose) cat(sprintf("Scanning subject: %s\n", subjectDir))
+  
+  # extract the subject-id  
+  subjectDirSplit <- unlist(strsplit(subjectDir, .Platform$file.sep))
+  keyname <- subjectDirSplit[length(subjectDirSplit)]
+  
+  # loop over this subject's modality dirs, ignoring all but the thickness subdirs
+  for (modalityDir in list.dirs(path=subjectDir, full.names=FALSE, recursive=FALSE)) {
+    if (opts_in$debug) cat(sprintf("%s\n", modalityDir))
+    
+    subdir <- unlist(strsplit(modalityDir,'-'))
+    if (length(subdir) == 2) {
+      modality <- subdir[1]
+      scanDate <- subdir[2]
+      
+      if (modality == "THICKNESS") {
+        
+        # ok, found a THICKNESS dir. Let's process it!
+        thicknessDir_fullPath <- file.path(subjectDir,modalityDir)
+        if (opts_in$verbose) cat(sprintf("Processing sub-directory: %s\n", thicknessDir_fullPath))
+        
+        # read in the thickness values
+        thickness_filename <- paste(keyname, '_thickness_lhrh.txt', sep="")
+        thicknessFilename_fullPath <- file.path(thicknessDir_fullPath, thickness_filename)
+        thickness.v <- scan(file=thicknessFilename_fullPath)
+        stopifnot( length(thickness.v) == CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN ) 
+        #
+        # put into a data.frame, and label by hemisphere
+        side <- c(rep(1,CIVET_SURFACE_NO_OF_VERTICES_LEFT), rep(2,CIVET_SURFACE_NO_OF_VERTICES_RIGHT))
+        thickness.df <- data.frame(thickness=thickness.v, 
+                                   side=factor(side, levels=c(1,2), labels=c("Lh","Rh")))
+        
+        
+        # create a data.frame of useful summary information
+        thickness_summary.df <- data.frame(uniqueId=paste(keyname,modalityDir, sep='-'), 
+                                           keyname=keyname, 
+                                           dirname=modalityDir,
+                                           Description=c("LH","RH","Both"), 
+                                           min=c(0,0,0), max=c(0,0,0), 
+                                           mean=c(0,0,0), stdev=c(0,0,0),
+                                           median=c(0,0,0))
+        
+        # compute by hemisphere
+        thickness_summary.df$min[c(1,2)] <- tapply(thickness.df$thickness, thickness.df$side, min)
+        thickness_summary.df$max[c(1,2)] <- tapply(thickness.df$thickness, thickness.df$side, max)
+        thickness_summary.df$mean[c(1,2)] <- tapply(thickness.df$thickness, thickness.df$side, mean)
+        thickness_summary.df$stdev[c(1,2)] <- tapply(thickness.df$thickness, thickness.df$side, sd)
+        thickness_summary.df$median[c(1,2)] <- tapply(thickness.df$thickness, thickness.df$side, median)
+        
+        # compute total
+        thickness_summary.df$min[3] <- min(thickness.df$thickness)
+        thickness_summary.df$max[3] <- max(thickness.df$thickness)
+        thickness_summary.df$mean[3] <- mean(thickness.df$thickness)
+        thickness_summary.df$stdev[3] <- sd(thickness.df$thickness)
+        thickness_summary.df$median[3] <- median(thickness.df$thickness)
+        if (opts_in$debug) print(thickness_summary.df)
+        
+
+        csvFilename <- paste(keyname, "_thickness_statistics_by_hemisphere.csv", sep="")
+        csvFilenameFullPath <- file.path(thicknessDir_fullPath, csvFilename)
+        write.csv(thickness_summary.df, csvFilenameFullPath, row.names=FALSE)
+      }
+      
+    }
+    
+  }
+  
+}
+
+# done. go away.
+q(save="no")
+
