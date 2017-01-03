@@ -89,8 +89,8 @@ args_in$wm_zscore_volname_fullpath <- optX$args[2]
 #opts_in$settingsFile <- "..."
 #
 #args_in <- list()
-#args_in$gm_zscore_volname_fullpath <- "/data/raid01/lorisData/zzzOutput_loris_12.06.13/baal/VBM-20080506/baal_gmVBM_zScores.mnc"
-#args_in$wm_zscore_volname_fullpath <- "/data/raid01/lorisData/zzzOutput_loris_12.06.13/baal/VBM-20080506/baal_wmVBM_zScores.mnc"
+#args_in$gm_zscore_volname_fullpath <- "/data/raid01/lorisData/zzzOutput_beagle_12.06.13/baal/VBM-20080506/baal_gmVBM_zScores.mnc"
+#args_in$wm_zscore_volname_fullpath <- "/data/raid01/lorisData/zzzOutput_beagle_12.06.13/baal/VBM-20080506/baal_wmVBM_zScores.mnc"
 #
 log_file <- "loggingBySGE"
 #DEBUG 1 ===========================================
@@ -112,13 +112,13 @@ if ( log_file != "loggingBySGE" ) {
 # = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
 #
 
-# load the HCLab Loris Analyis library
-library(lorisStatistics)
-#suppressPackageStartupMessages(library(lorisStatistics))  
+# load the HCLab beagle.statistics Analyis library
+library(beagle.statistics)
+#suppressPackageStartupMessages(library(beagle.statistics))  
 
 # read the Loris aggregated settings file (in JSON format)
 #cat(sprintf("BEFORE settings load\n"))
-settings <- read_loris_aggregated_settings(opts_in$settingsFile, verbose=TRUE)
+settings <- read_beagle_aggregated_settings(opts_in$settingsFile, verbose=TRUE)
 #cat(sprintf("AFTER settings load\n"))
 
 LORIS_DEBUG <- settings$LORIS_DEBUG

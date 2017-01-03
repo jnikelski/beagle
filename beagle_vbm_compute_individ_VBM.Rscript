@@ -100,13 +100,13 @@ if ( log_file != "loggingBySGE" ) {
 # = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
 #
 
-# load the HCLab Loris Analyis library
-library(lorisStatistics)
-#suppressPackageStartupMessages(library(lorisStatistics))  
+# load the HCLab beagle.statistics Analyis library
+library(beagle.statistics)
+#suppressPackageStartupMessages(library(beagle.statistics))  
 
 # read the Loris aggregated settings file (in JSON format)
 #cat(sprintf("BEFORE settings load\n"))
-settings <- read_loris_aggregated_settings(opts_in$settingsFile, verbose=TRUE)
+settings <- read_beagle_aggregated_settings(opts_in$settingsFile, verbose=TRUE)
 #cat(sprintf("AFTER settings load\n"))
 
 CIVET_VERSION <- settings$CIVET_VERSION

@@ -1,6 +1,6 @@
 <<echo=FALSE>>=
-# load Loris and rmincIO libraries
-library(lorisStatistics)
+# load beagle.statistics and rmincIO libraries
+library(beagle.statistics)
 
 # read passed arguments from args file
 # (1) keyname           [ e.g., tofty]
@@ -12,7 +12,7 @@ library(lorisStatistics)
 source("args_file.txt")
 
 # read the Beagle aggregated settings file
-settings <- read_loris_aggregated_settings(settings_filename, verbose=FALSE)
+settings <- read_beagle_aggregated_settings(settings_filename, verbose=FALSE)
 #print(settings)
 
 # construct useful filename

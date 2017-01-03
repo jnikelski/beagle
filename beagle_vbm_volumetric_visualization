@@ -101,7 +101,7 @@ begin
       exit
    end
    #
-   settings = load_loris_aggregated_settings(opt.settingsFile, verbose=false, debug=false)
+   settings = load_beagle_aggregated_settings(opt.settingsFile, verbose=false, debug=false)
 
 
    # init selected variables

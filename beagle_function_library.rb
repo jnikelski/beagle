@@ -1,11 +1,11 @@
 # ==============================================================================
-# Function: load_loris_settings
+# Function: load_beagle_settings
 # Purpose:
 #     Load the Loris settings, what else?
 #
 # ==============================================================================
 #
-def load_loris_settings(settings_file, verbose=false, debug=false)
+def load_beagle_settings(settings_file, verbose=false, debug=false)
    #
    # has a nil value been passed?
    #     i.e., the LORIS_SETTINGS_FILE env var has not been set
@@ -67,7 +67,7 @@ end
 
 
 # ==============================================================================
-# Function: load_loris_runConfig
+# Function: load_beagle_runConfig
 # Purpose:
 #     Load the Loris run configuration values.
 #     These values are different from settings in that run config values
@@ -76,7 +76,7 @@ end
 #
 # ==============================================================================
 #
-def load_loris_runConfig(config_file, verbose=false, debug=false)
+def load_beagle_runConfig(config_file, verbose=false, debug=false)
    #
    # has a nil value been passed?
    #     i.e., the config filename has not been set
@@ -136,7 +136,7 @@ end
 
 
 # ==============================================================================
-# Function: load_loris_aggregated_settings
+# Function: load_beagle_aggregated_settings
 # Purpose:
 #     Load the Loris aggregated settings.
 #     Recall that these are created by the Loris run initialization
@@ -150,7 +150,7 @@ end
 #
 # ==============================================================================
 #
-def load_loris_aggregated_settings(settings_file, verbose=false, debug=false)
+def load_beagle_aggregated_settings(settings_file, verbose=false, debug=false)
    #
    # has a nil value been passed?
    #     i.e., the config filename has not been set

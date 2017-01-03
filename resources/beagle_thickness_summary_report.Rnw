@@ -1,6 +1,6 @@
 <<echo=FALSE>>=
-# load Loris and rmincIO libraries (and Lattice)
-library(lorisStatistics)
+# load beagle.statistics and rmincIO libraries (and Lattice)
+library(beagle.statistics)
 library(xtable)
 
 # read passed arguments from args file
@@ -13,7 +13,7 @@ library(xtable)
 source("args_file.txt")
 
 # read the Beagle aggregated settings file
-settings <- read_loris_aggregated_settings(settings_filename, verbose=FALSE)
+settings <- read_beagle_aggregated_settings(settings_filename, verbose=FALSE)
 #print(settings)
 
 

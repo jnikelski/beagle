@@ -72,7 +72,7 @@ begin
 
    # load the Loris settings
    settings_file = ENV['LORIS_SETTINGS_FILE']
-   settings = load_loris_settings(settings_file, verbose=opt.verbose, debug=opt.debug)
+   settings = load_beagle_settings(settings_file, verbose=opt.verbose, debug=opt.debug)
 
    LORIS_DEBUG = settings['LORIS_DEBUG']
    if ( LORIS_DEBUG == 'ON' ) then opt.debug=true end

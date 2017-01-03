@@ -105,10 +105,10 @@ begin
    # read both the permanent settings file and the run configuration
    # file, and then merge them
    # ... load the Loris settings
-   settings = load_loris_settings(opt.settingsFile, verbose=opt.verbose)
+   settings = load_beagle_settings(opt.settingsFile, verbose=opt.verbose)
 
    # ... load the Loris run configuration values and merge
-   settingsRunConfig = load_loris_runConfig(opt.runConfigFile, verbose=opt.verbose, debug=opt.debug)
+   settingsRunConfig = load_beagle_runConfig(opt.runConfigFile, verbose=opt.verbose, debug=opt.debug)
    settings.merge!(settingsRunConfig)
 
 
