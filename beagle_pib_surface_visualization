@@ -108,12 +108,7 @@ begin
    # run parse!() method in the OptionParser object, passing ARGV
    # NB: the "!" in parse!() removes the switches from ARGV
    puts "Before OptionParser start ..." if opt.debug
-   begin
-      opts.parse!(ARGV)
-   rescue Exception => e
-      puts e, "", opts
-      exit
-   end
+   opts.parse!(ARGV)
 
 
 

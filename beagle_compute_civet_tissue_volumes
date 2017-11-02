@@ -1,0 +1,326 @@
+#!/usr/bin/env ruby
+
+require 'optparse'
+require 'ostruct'
+require 'pathname'
+require 'fileutils'
+require 'tmpdir'            # needed for Dir::tmpdir
+
+# submit a command to the system, and check for error
+def do_cmd(cmd, verbose=false, fake=false)
+    puts "\n>>" + cmd if verbose
+    if not fake
+        if !system(cmd) 
+            puts "! Submitted OS call returned an error. Failed command looked like this ... "
+            puts "! >>#{cmd}"
+            puts "! Stopping execution."
+            exit 1
+        end
+    end
+end
+
+
+# compute number of voxels in mask volume
+def sum_voxels_in_mask_volume(desc, volume_name, verbose=true)
+   cmd = "mincstats  -sum " + "  #{volume_name}"
+   puts cmd if verbose
+   vox_count =`#{cmd}`
+   vox_count = vox_count.split(' ')[1]
+   puts "Number of voxels in #{desc} [#{volume_name}]: " + vox_count if verbose
+   return vox_count
+end
+
+
+
+# start of main script
+begin
+   opt                     = OpenStruct.new{}  # store input options
+   opt.verbose             = false
+   opt.debug               = false
+   opt.fake                = false
+   opt.clobber             = false
+   opt.civetPrefix         = 'ADNI'
+   opt.tmpDir              = ""        # work directory
+
+
+   # List of arguments.
+   opts = OptionParser.new do |opts|
+      opts.banner = "Usage: #{$0} [Options]   civet_root_dir_in"
+      opts.separator ""
+      opts.separator "Options:"
+
+      opts.on('-v', '--[no-]verbose', 'Run verbosely') { |v| opt.verbose = v }
+
+      opts.on('--clobber', 'Overwrite existing output file') { |c| opt.clobber = c }
+
+      opts.on('-d', '--debug', 'Print pedantic debugging messages') { |d| opt.debug = d }
+
+      opts.on('-f', '--fake', 'Do not actually execute the commands') { |f| opt.fake = f }
+
+      opts.on('--civetPrefix civet_prefix', "civet filenaming prefix; default is #{opt.civetPrefix})") do |civetPre|
+         opt.civetPrefix = civetPre.to_s
+         puts "** Civet prefix: " + opt.civetPrefix if opt.verbose
+      end
+
+      opts.on_tail("-h", "--help", "Show this very helpful help message") do
+         puts opts
+         exit
+      end
+   end  # OptionParser
+
+   # run parse!() method in the OptionParser object, passing ARGV
+   # NB: the "!" in parse!() removes the switches from ARGV
+   puts "Before OptionParser start ..." if opt.debug
+   begin
+      opts.parse!(ARGV)
+   rescue Exception => e
+      puts e, "", opts
+      exit
+   end
+
+
+
+   # INITIALIZATION 
+   #
+   civet_root_dir = ARGV[0]
+   puts "civet root directory: #{civet_root_dir}" if opt.debug
+
+
+   # ensure that the Civet directory arg was specified
+   if ( civet_root_dir.nil? ) then
+      puts "\n*** Error: Please specify the Civet root directory"
+      puts opts
+      puts "\n\n"
+      exit
+   end
+
+   # ensure that the civet root directory exists
+   civet_root_dir = File.expand_path(civet_root_dir)
+   if ( !File.exists?(civet_root_dir) || !File.directory?(civet_root_dir) ) then 
+      puts sprintf("\n*** Error: Civet root directory [%s] is not valid", civet_root_dir)
+      puts opts
+      exit
+   end
+
+   # create a tmpdir that we can clean up after we're done
+   if ( opt.tmpDir.empty? ) then opt.tmpDir = Dir::tmpdir end
+   tmpSubDir = 'hclab_compute_civet_tissue_volumes_' + Process.pid.to_s
+   opt.tmpDir = File.join(opt.tmpDir, tmpSubDir)
+   FileUtils.mkdir_p(opt.tmpDir)
+
+
+   # show arg summary info, if verbose
+   if (opt.verbose) then
+      puts "\nProcessing Options:"
+      puts "   **                         Verbose:    ON"
+      puts "   **                           Debug:    ON" if opt.debug
+      puts "   **                            Fake:    ON" if opt.fake
+      puts "   **                         Clobber:    ON" if opt.clobber
+      puts "   **            Civet root directory:    #{civet_root_dir}"
+      puts "   **          Temp working directory:    #{opt.tmpDir}"
+   end
+
+
+   # set some useful constants
+   civetPrefix = opt.civetPrefix + '_'
+   TISSUE_TYPE_BG = 0
+   TISSUE_TYPE_CSF = 1
+   TISSUE_TYPE_GM = 2
+   TISSUE_TYPE_WM = 3
+   
+
+
+   #  Loop over all subjects (keynames) by looping over all
+   # => entries in the Civet root directory
+   #
+   f = File.new("civet_tissue_volumes.csv","w")
+   
+   subdirCtr = 0
+   Dir.foreach(civet_root_dir) {|keyname|
+
+
+      # skip over ./.. directory entries
+      if ( !File.fnmatch?('*', keyname) ) then next end
+
+      # only process if it's a directory
+      keyname_fullPath = File.join(civet_root_dir, keyname)
+      if ( !File.directory?(keyname_fullPath) ) then next end
+
+      # skip over if testing
+      subdirCtr = subdirCtr +1
+      #if ( subdirCtr > 1 ) then next end
+      #if ( keyname != "0002-M-NC" ) then next end
+      puts "Processing -- " + keyname
+
+      #
+      # prepare to compute gray and white matter volumes
+      #
+
+      # first, let's break apart the classify volume (as separate masks)
+      #
+      # set classify volume name
+      classify_volname = civetPrefix + keyname + '_classify.mnc'
+      classify_volname_fullpath = File.join(keyname_fullPath, 'classify', classify_volname)
+      
+      # (1) break out the GM
+      gm_mask_filename_fullpath = File.join(opt.tmpDir, 'gm_mask.mnc')
+      cmd = "minclookup -discrete "
+      cmd << "-lut_string \"#{TISSUE_TYPE_GM} 1\"  "
+      cmd << "#{classify_volname_fullpath}   "
+      cmd << "#{gm_mask_filename_fullpath}   "
+      do_cmd(cmd, opt.verbose, opt.fake)
+      rx = sum_voxels_in_mask_volume("classify GM mask", gm_mask_filename_fullpath)
+      
+      # (2) break out the WM
+      wm_mask_filename_fullpath = File.join(opt.tmpDir, 'wm_mask.mnc')
+      cmd = "minclookup -discrete "
+      cmd << "-lut_string \"#{TISSUE_TYPE_WM} 1\"  "
+      cmd << "#{classify_volname_fullpath}   "
+      cmd << "#{wm_mask_filename_fullpath}   "
+      do_cmd(cmd, opt.verbose, opt.fake)
+      rx = sum_voxels_in_mask_volume("classify WM mask", wm_mask_filename_fullpath)
+      
+      # (3) break out the CSF
+      csf_mask_filename_fullpath = File.join(opt.tmpDir, 'csf_mask.mnc')
+      cmd = "minclookup -discrete "
+      cmd << "-lut_string \"#{TISSUE_TYPE_CSF} 1\"  "
+      cmd << "#{classify_volname_fullpath}   "
+      cmd << "#{csf_mask_filename_fullpath}   "
+      do_cmd(cmd, opt.verbose, opt.fake)
+      rx = sum_voxels_in_mask_volume("classify CSF mask", csf_mask_filename_fullpath)
+
+
+      # set brain mask volume name and apply mask against tissue mask volumes
+      brain_mask_volname = civetPrefix + keyname + '_brain_mask.mnc'
+      brain_mask_volname_fullpath = File.join(keyname_fullPath, 'mask', brain_mask_volname)
+      rx = sum_voxels_in_mask_volume("brain mask", brain_mask_volname_fullpath)
+
+
+      # mask the gray matter mask
+      gm_cerebrum_mask_filename_fullpath = File.join(opt.tmpDir, 'gm_cerebrum_mask.mnc')
+      cmd = "mincmath -mult -clobber  "
+      cmd << "#{gm_mask_filename_fullpath}  "
+      cmd << "#{brain_mask_volname_fullpath}   "
+      cmd << "#{gm_cerebrum_mask_filename_fullpath} "
+      do_cmd(cmd, opt.verbose, opt.fake)
+      rx_gm = sum_voxels_in_mask_volume("cerebrum-masked classify GM mask", gm_cerebrum_mask_filename_fullpath)
+
+      # mask the white matter mask
+      wm_cerebrum_mask_filename_fullpath = File.join(opt.tmpDir, 'wm_cerebrum_mask.mnc')
+      cmd = "mincmath -mult -clobber  "
+      cmd << "#{wm_mask_filename_fullpath}  "
+      cmd << "#{brain_mask_volname_fullpath}   "
+      cmd << "#{wm_cerebrum_mask_filename_fullpath} "
+      do_cmd(cmd, opt.verbose, opt.fake)
+      rx_wm = sum_voxels_in_mask_volume("cerebrum-masked classify WM mask", wm_cerebrum_mask_filename_fullpath)
+      
+      # Done. We now have gray and white matter counts in stx space
+
+      
+      
+      #
+      # Next: compute CSF counts for both sulcal and ventricular CSF
+      #
+      # Strategy:
+      #  1. create left and right hemisphere WM masks using surface_mask2
+      #  2. create a unified WM surface using mincmorph
+      #  3. apply the mask to the classify volume, yielding ventricular CSF
+      #  4. apply the *inverted* mask, yielding sulcal CSF
+      
+      # Step 1 -- create LH and RH white matter masks
+      # ... use the classify volume to get the sampling info
+      
+      # set surface volume name
+      surfaceWmLh_volname = civetPrefix + keyname + '_white_surface_left_calibrated_81920.obj'
+      surfaceWmLh_volname_fullpath = File.join(keyname_fullPath, 'surfaces', surfaceWmLh_volname)
+      #
+      surfaceWmRh_volname = civetPrefix + keyname + '_white_surface_right_calibrated_81920.obj'
+      surfaceWmRh_volname_fullpath = File.join(keyname_fullPath, 'surfaces', surfaceWmRh_volname)
+      
+      wm_left_mask_filename_fullpath = File.join(opt.tmpDir, 'wm_left_mask.mnc')
+      cmd = "surface_mask2  -binary_mask "
+      cmd << "#{classify_volname_fullpath}  "
+      cmd << "#{surfaceWmLh_volname_fullpath}   "
+      cmd << "#{wm_left_mask_filename_fullpath} "
+      do_cmd(cmd, opt.verbose, opt.fake)
+      #
+      wm_right_mask_filename_fullpath = File.join(opt.tmpDir, 'wm_right_mask.mnc')
+      cmd = "surface_mask2  -binary_mask "
+      cmd << "#{classify_volname_fullpath}  "
+      cmd << "#{surfaceWmRh_volname_fullpath}   "
+      cmd << "#{wm_right_mask_filename_fullpath} "
+      do_cmd(cmd, opt.verbose, opt.fake)
+
+      # merge lh/rh wm masks
+      wm_mask0_filename_fullpath = File.join(opt.tmpDir, 'wm_mask0.mnc')
+      cmd = "mincmath  -short  -add  "
+      cmd << "#{wm_left_mask_filename_fullpath}  "
+      cmd << "#{wm_right_mask_filename_fullpath}   "
+      cmd << "#{wm_mask0_filename_fullpath} "
+      do_cmd(cmd, opt.verbose, opt.fake)
+      #
+      # blend the masks at the center
+      wm_mask_filename_fullpath = File.join(opt.tmpDir, 'wm_mask.mnc')
+      cmd = "mincmorph  -verbose  -clobber  -successive DE  "
+      cmd << "#{wm_mask0_filename_fullpath}  "
+      cmd << "#{wm_mask_filename_fullpath}   "
+      do_cmd(cmd, opt.verbose, opt.fake)
+      
+      
+      # apply the mask to the classify volume, 
+      # ... yielding a ventricular CSF-containing classify volume
+      vCsf_filename_fullpath = File.join(opt.tmpDir, 'classify_ventricularCsf.mnc')
+      cmd = "mincmask   "
+      cmd << "#{classify_volname_fullpath}  "
+      cmd << "#{wm_mask_filename_fullpath}   "
+      cmd << "#{vCsf_filename_fullpath}  "
+      do_cmd(cmd, opt.verbose, opt.fake)
+      
+      # apply the mask to the classify volume, 
+      # ... yielding a sulcal CSF-containing classify volume
+      sCsf_filename_fullpath = File.join(opt.tmpDir, 'classify_sulcalCsf.mnc')
+      cmd = "mincmask   -invert_mask   "
+      cmd << "#{classify_volname_fullpath}  "
+      cmd << "#{wm_mask_filename_fullpath}   "
+      cmd << "#{sCsf_filename_fullpath}  "
+      do_cmd(cmd, opt.verbose, opt.fake)
+
+      # create a ventricular CSF mask and quantify
+      vCSF_mask_filename_fullpath = File.join(opt.tmpDir, 'ventricularCsf.mnc')
+      cmd = "minclookup -discrete "
+      cmd << "-lut_string \"#{TISSUE_TYPE_CSF} 1\"  "
+      cmd << "#{vCsf_filename_fullpath}   "
+      cmd << "#{vCSF_mask_filename_fullpath}   "
+      do_cmd(cmd, opt.verbose, opt.fake)
+      rx_vCSF = sum_voxels_in_mask_volume("ventricular CSF", vCSF_mask_filename_fullpath)
+
+      # create a sulcal CSF mask and quantify
+      sCSF_mask_filename_fullpath = File.join(opt.tmpDir, 'sulcalCsf.mnc')
+      cmd = "minclookup -discrete "
+      cmd << "-lut_string \"#{TISSUE_TYPE_CSF} 1\"  "
+      cmd << "#{sCsf_filename_fullpath}   "
+      cmd << "#{sCSF_mask_filename_fullpath}   "
+      do_cmd(cmd, opt.verbose, opt.fake)
+      rx_sCSF = sum_voxels_in_mask_volume("sulcal CSF", sCSF_mask_filename_fullpath)
+
+
+      # write out the results
+      f.puts("#{keyname}, #{rx_gm}, #{rx_wm}, #{rx_vCSF}, #{rx_sCSF}")
+      
+      
+      # clean up (remove tmp files; write out summary line to csf file)
+      FileUtils.rm Dir.glob("#{opt.tmpDir}/*")
+
+
+   }
+   
+   # done, close output file
+   f.close
+
+
+rescue RuntimeError => e
+    STDERR.puts e
+    exit 1
+end  # main()
+
+
