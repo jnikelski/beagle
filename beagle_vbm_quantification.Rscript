@@ -45,7 +45,7 @@ option_list <- list(
                
    make_option(c("--scanDate"), 
          action="store", 
-         type="character", default=NULL, dest="scanDate",
+         type="character", default=NULL, dest="scanId",
          help="Civet scan date for subject. (E.g. \"20071009\")"),
                
    make_option(c("--settingsFile"), 
@@ -85,7 +85,7 @@ args_in$wm_zscore_volname_fullpath <- optX$args[2]
 #opts_in$verbose <- TRUE
 #opts_in$debug <- TRUE
 #opts_in$keyname <- "baal"
-#opts_in$scanDate <- "20080506"
+#opts_in$scanId <- "20080506"
 #opts_in$settingsFile <- "..."
 #
 #args_in <- list()
@@ -94,11 +94,6 @@ args_in$wm_zscore_volname_fullpath <- optX$args[2]
 #
 log_file <- "loggingBySGE"
 #DEBUG 1 ===========================================
-
-
-# add some extra derived values to the input packet
-opts_in$scanId <- paste(opts_in$keyname, opts_in$scanDate, sep="-")
-opts_in$vbm_dirname <- paste("VBM", opts_in$scanDate, sep="-")
 
 
 # if the log is being written to SGE, then don't log internally
@@ -124,7 +119,6 @@ settings <- read_beagle_aggregated_settings(opts_in$settingsFile, verbose=TRUE)
 LORIS_DEBUG <- settings$LORIS_DEBUG
 if ( LORIS_DEBUG == "ON" ) {LORIS_DEBUG <- TRUE}
 CIVET_VERSION <- settings$CIVET_VERSION
-CIVET_PREFIX <- paste(settings$CIVET_PREFIX, '_', sep='')
 
 AAL_LABELS_VERSION <- settings$AAL_LABELS_VERSION
 AAL_LABELS_DIR <- settings$AAL_LABELS_DIR
@@ -138,6 +132,7 @@ zTholds <- c(-2.33, -3.09, -3.71)
 zTholds_pValues <- c("0.01", "0.001", "0.0001")
 
 # define some useful subdirectories
+opts_in$vbm_dirname <- paste("VBM", opts_in$scanId, sep="-")
 LORIS_ROOT_DIR <- settings$LORIS_ROOT_DIR
 loris_subject_rootDir <- file.path(LORIS_ROOT_DIR, opts_in$keyname)
 vbm_subject_rootDir <- file.path(loris_subject_rootDir, opts_in$vbm_dirname)
@@ -150,11 +145,11 @@ setwd(wrkDir)
 
 
 # load subject's master logfile, and then write a start message
-llogger <- loris_logger_loadFromFile(opts_in$keyname, settings)
+llogger <- beagle_logger_loadFromFile(opts_in$keyname, settings)
 progname <- 'beagle_vbm_quantification.Rscript'
-llogger <- loris_logger_logStartMessage(progname, opts_in$keyname, 'VBM', opts_in$scanDate, llogger)
-llogger <- loris_logger_logMessage(progname, opts_in$keyname, 'VBM',
-                                       opts_in$scanDate,
+llogger <- beagle_logger_logStartMessage(progname, opts_in$keyname, 'VBM', opts_in$scanId, llogger)
+llogger <- beagle_logger_logMessage(progname, opts_in$keyname, 'VBM',
+                                       opts_in$scanId,
                                        'civet_version', CIVET_VERSION,
                                        llogger)
 
@@ -289,8 +284,8 @@ file.rename(status_filename_running, status_filename_finished)
 
 
 # log a 'done' message to the subject's master logfile, and then write out logfile
-llogger <- loris_logger_logStopMessage(progname, opts_in$keyname, 'VBM', opts_in$scanDate, llogger)
-loris_logger_saveToFile(opts_in$keyname, llogger, settings)
+llogger <- beagle_logger_logStopMessage(progname, opts_in$keyname, 'VBM', opts_in$scanId, llogger)
+beagle_logger_saveToFile(opts_in$keyname, llogger, settings)
 
 
 

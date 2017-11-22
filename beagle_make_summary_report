@@ -53,7 +53,7 @@ def do_select_subdirs(targetDir_fullPath, debug)
       if ( subdir_parts.length != 2 )  then next end
       # ... store the parts names
       analysis = subdir_parts[0]
-      scan_date = subdir_parts[1]
+      scan_id = subdir_parts[1]
       
       # is this subdir one of the chosen ones?
       if ( modalities.include? analysis ) then selected.push(subdir) end
@@ -76,11 +76,11 @@ end
 
 
 # perform Sweave processing for a particular chapter/analysis
-def do_sweave(analysis_type, scan_date, template, chapter_number, settings, opt, wrkdir)
+def do_sweave(analysis_type, scan_id, template, chapter_number, settings, opt, wrkdir)
 
    if ( 1 == 0 ) then
       puts sprintf("Debug: do_sweave: analysis_type = %s", analysis_type)
-      puts sprintf("Debug: do_sweave: scan_date = %s", scan_date)
+      puts sprintf("Debug: do_sweave: scan_id = %s", scan_id)
       puts sprintf("Debug: do_sweave: template = %s", template)
       puts sprintf("Debug: do_sweave: chapter_number = %s", chapter_number)
       puts sprintf("Debug: do_sweave: settings ...")
@@ -109,7 +109,7 @@ def do_sweave(analysis_type, scan_date, template, chapter_number, settings, opt,
    args_file.puts sprintf(%|keyname = "#{opt.keyname}"|)
    args_file.puts sprintf(%|rootDir = "#{settings['LORIS_ROOT_DIR']}"|)
    args_file.puts sprintf(%|analysis_type = "#{analysis_type}"|)
-   args_file.puts sprintf(%|scan_date = "#{scan_date}"|)
+   args_file.puts sprintf(%|scan_id = "#{scan_id}"|)
    args_file.puts sprintf(%|settings_filename = "#{opt.settingsFile}"|)
    args_file.close()
 
@@ -275,10 +275,10 @@ begin
       # split the subdir name, and then store the parts
       subdir_parts = subdir.split('-')
       analysis = subdir_parts[0]
-      scan_date = subdir_parts[1]
+      scan_id = subdir_parts[1]
       
       #
-      puts sprintf("Processing -- Analysis type: %s     Scan date: %s",analysis,scan_date) if opt.debug
+      puts sprintf("Processing -- Analysis type: %s     Scan date: %s",analysis,scan_id) if opt.debug
 
       # increment the chapter number
       # ... this is used to create unique .Rnw/.tex filenames
@@ -291,7 +291,7 @@ begin
          RNW_TEMPLATE_VBM = settings['RNW_TEMPLATE_VBM']
          puts "VBM Sweave template filename: #{RNW_TEMPLATE_VBM}" if opt.debug
          # perform Sweave processing
-         do_sweave(analysis, scan_date, 'RNW_TEMPLATE_VBM', chapter_number, settings, opt, keynameTmp_dir_fullPath)
+         do_sweave(analysis, scan_id, 'RNW_TEMPLATE_VBM', chapter_number, settings, opt, keynameTmp_dir_fullPath)
          # write an '\input' line to the chapters file
          chapter_file.puts sprintf("\\input\{chapter_#{chapter_number}.tex\}")
 
@@ -299,7 +299,7 @@ begin
          RNW_TEMPLATE_PIB = settings['RNW_TEMPLATE_PIB']
          puts "PiB Sweave template filename: #{RNW_TEMPLATE_PIB}" if opt.debug
          # perform Sweave processing
-         do_sweave(analysis, scan_date, 'RNW_TEMPLATE_PIB', chapter_number, settings, opt, keynameTmp_dir_fullPath)
+         do_sweave(analysis, scan_id, 'RNW_TEMPLATE_PIB', chapter_number, settings, opt, keynameTmp_dir_fullPath)
          # write an '\input' line to the chapters file
          chapter_file.puts sprintf("\\input\{chapter_#{chapter_number}.tex\}")
 
@@ -307,7 +307,7 @@ begin
          RNW_TEMPLATE_FDG = settings['RNW_TEMPLATE_FDG']
          puts "FDG Sweave template filename: #{RNW_TEMPLATE_FDG}" if opt.debug
          # perform Sweave processing
-         do_sweave(analysis, scan_date, 'RNW_TEMPLATE_FDG', chapter_number, settings, opt, keynameTmp_dir_fullPath)
+         do_sweave(analysis, scan_id, 'RNW_TEMPLATE_FDG', chapter_number, settings, opt, keynameTmp_dir_fullPath)
          # write an '\input' line to the chapters file
          chapter_file.puts sprintf("\\input\{chapter_#{chapter_number}.tex\}")
 
@@ -315,7 +315,7 @@ begin
          RNW_TEMPLATE_LABELS = settings['RNW_TEMPLATE_LABELS']
          puts "AAL Sweave template filename: #{RNW_TEMPLATE_LABELS}" if opt.debug
          # perform Sweave processing
-         do_sweave(analysis, scan_date, 'RNW_TEMPLATE_LABELS', chapter_number, settings, opt, keynameTmp_dir_fullPath)
+         do_sweave(analysis, scan_id, 'RNW_TEMPLATE_LABELS', chapter_number, settings, opt, keynameTmp_dir_fullPath)
          # write an '\input' line to the chapters file
          chapter_file.puts sprintf("\\input\{chapter_#{chapter_number}.tex\}")
 
@@ -323,7 +323,7 @@ begin
          RNW_TEMPLATE_THICKNESS = settings['RNW_TEMPLATE_THICKNESS']
          puts "Cortical thickness Sweave template filename: #{RNW_TEMPLATE_THICKNESS}" if opt.debug
          # perform Sweave processing
-         do_sweave(analysis, scan_date, 'RNW_TEMPLATE_THICKNESS', chapter_number, settings, opt, keynameTmp_dir_fullPath)
+         do_sweave(analysis, scan_id, 'RNW_TEMPLATE_THICKNESS', chapter_number, settings, opt, keynameTmp_dir_fullPath)
          # write an '\input' line to the chapters file
          chapter_file.puts sprintf("\\input\{chapter_#{chapter_number}.tex\}")
       else

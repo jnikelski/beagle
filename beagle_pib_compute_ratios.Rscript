@@ -39,15 +39,15 @@ option_list <- list(
          type="character", default=NULL, dest="keyname",
          help="Subject keyname (E.g. \"yueh\")"),
                
-   make_option(c("--scanDate"), 
+   make_option(c("--scanId"), 
          action="store", 
-         type="character", default=NULL, dest="scanDate",
-         help="PiB scan date for subject. (E.g. \"20071009\")"),
+         type="character", default=NULL, dest="scanId",
+         help="PiB scan Id for subject. (E.g. \"20071009\")"),
 
-   make_option(c("--civetScanDate"), 
+   make_option(c("--civetScanId"), 
          action="store", 
-         type="character", default=NULL, dest="civetScanDate",
-         help="Civet scan date for subject. (E.g. \"20071009\")"),
+         type="character", default=NULL, dest="civetScanId",
+         help="Civet scan Id for subject. (E.g. \"20071009\")"),
                
    make_option(c("--settingsFile"), 
          action="store", 
@@ -78,7 +78,7 @@ if ( length(optX$args) > 0 ){
 #O$verbose <- TRUE
 #O$debug <- TRUE
 #O$keyname <- "fenrir"
-#O$scanDate <- "20071009"
+#O$scanId <- "20071009"
 #O$settingsFile <- "..."
 #
 log_file <- "loggingBySGE"
@@ -86,9 +86,8 @@ log_file <- "loggingBySGE"
 
 
 # add some extra derived values to the input packet
-O$scanId <- paste(O$keyname, O$scanDate, sep="-")
-O$civetScanId <- paste(O$keyname, O$civetScanDate, sep="-")
-O$pib_dirname <- paste("PiB", O$scanDate, sep="-")
+civetScanDir <- paste(O$keyname, O$civetScanId, sep="-")
+pibWorkingDir <- paste("PiB", O$scanId, sep="-")
 
 
 # if the log is being written to SGE, then don't log internally
@@ -124,7 +123,7 @@ LORIS_ROOT_DIR <- settings$LORIS_ROOT_DIR
 keyname_dir_fullPath <- file.path(LORIS_ROOT_DIR, O$keyname)
 
 # PiB-related paths
-pibDir <- file.path(keyname_dir_fullPath, O$pib_dirname)
+pibDir <- file.path(keyname_dir_fullPath, pibWorkingDir)
 pibDir_ratiosDir <- file.path(pibDir, "ratios")
 pibDir_logsDir <- file.path(pibDir, "logs")
 pibDir_imagesDir <- file.path(pibDir, "images")
@@ -133,7 +132,15 @@ pibDir_talDir <- file.path(pibDir, "tal")
 
 # civet-related paths
 CIVET_ROOT_DIR <- settings$CIVET_ROOT_DIR
-civet_subject_rootDir <- file.path(CIVET_ROOT_DIR, O$civetScanId)
+# set civet scan id -- default to appending 
+CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME <- settings$CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME
+civetScanDir <- paste(O$keyname, O$civetScanId, sep="-")
+# don't append, just use keyname
+if ( CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME != "ON") {
+      civetScanDir <- O$keyname
+}
+#
+civet_subject_rootDir <- file.path(CIVET_ROOT_DIR, civetScanDir)
 
 
 
@@ -157,11 +164,11 @@ library(beagle.statistics)
 
 
 # load subject's master logfile, and then write a start message
-llogger <- loris_logger_loadFromFile(O$keyname, settings)
+llogger <- beagle_logger_loadFromFile(O$keyname, settings)
 progname <- 'beagle_pib_compute_ratios.Rscript'
-llogger <- loris_logger_logStartMessage(progname, O$keyname, 'PiB', O$scanDate, llogger)
-llogger <- loris_logger_logMessage(progname, O$keyname, 'PiB',
-                                       O$scanDate,
+llogger <- beagle_logger_logStartMessage(progname, O$keyname, 'PiB', O$scanId, llogger)
+llogger <- beagle_logger_logMessage(progname, O$keyname, 'PiB',
+                                       O$scanId,
                                        'civet_version', CIVET_VERSION,
                                        llogger)
 
@@ -285,7 +292,7 @@ refTissue_labels <- c(refTissue_labels, "refCerebGM")
 
 
 # set a few additional packet settings
-packet$pib_scanId <- O$scanId
+packet$pib_scanId <- paste(O$keyname, O$scanId, sep="-")
 
 # loop over all reference tissues
 #  ... compute AUC, ratios, and some lovely plots
@@ -314,17 +321,17 @@ for ( ndx in 1:length(refTissue_labels)) {
    dev.off()
    
    # write selected values to the logfile
-   llogger <- loris_logger_logMessage(progname, O$keyname, 'PiB', O$scanDate, 
+   llogger <- beagle_logger_logMessage(progname, O$keyname, 'PiB', O$scanId, 
                                           paste(refTissue_labels[ndx],'avg_refValues_byFrame', sep='_'), 
                                           refAuc.lst$avg_refValues_byFrame.v,
                                           llogger)
                                              
-   llogger <- loris_logger_logMessage(progname, O$keyname, 'PiB', O$scanDate, 
+   llogger <- beagle_logger_logMessage(progname, O$keyname, 'PiB', O$scanId, 
                                              paste(refTissue_labels[ndx],'mid_frame_times', sep='_'),
                                              refAuc.lst$mid_frame_times.v,
                                              llogger)
                                              
-   llogger <- loris_logger_logMessage(progname, O$keyname, 'PiB', O$scanDate, 
+   llogger <- beagle_logger_logMessage(progname, O$keyname, 'PiB', O$scanId, 
                                              paste(refTissue_labels[ndx],'AUC', sep='_'),
                                              refAuc.lst$refAuc,
                                              llogger)
@@ -343,12 +350,12 @@ file.rename(status_filename_running, status_filename_finished)
 
 
 # log a 'done' message to the subject's master logfile, and then write out logfile
-llogger <- loris_logger_logStopMessage(progname, O$keyname, 'PiB', O$scanDate, llogger)
-loris_logger_saveToFile(O$keyname, llogger, settings)
+llogger <- beagle_logger_logStopMessage(progname, O$keyname, 'PiB', O$scanId, llogger)
+beagle_logger_saveToFile(O$keyname, llogger, settings)
 
 
 # print the log entries (for fun)
-logger.df <- loris_logger_loadFromFileAsDataFrame(O$keyname, settings)
+logger.df <- beagle_logger_loadFromFileAsDataFrame(O$keyname, settings)
 options(width=9999)
 print(logger.df)
 

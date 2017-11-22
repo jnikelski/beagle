@@ -28,7 +28,7 @@ begin
    opt.debug               = false
    opt.keyname             = ""
    opt.scanDate            = ""
-   opt.scanId              = ""                 # this is a derived value
+   opt.civetScanId         = ""                 # this is a derived value
    opt.settingsFile        = ""
 
    # List of arguments.
@@ -102,20 +102,21 @@ begin
    CIVET_FINAL_T1_VOLUME_SUFFIX = settings['CIVET_FINAL_T1_VOLUME_SUFFIX']
    CIVET_SURFACE_GRAY_LEFT_SUFFIX = settings['CIVET_SURFACE_GRAY_LEFT_SUFFIX']
    CIVET_SURFACE_GRAY_RIGHT_SUFFIX = settings['CIVET_SURFACE_GRAY_RIGHT_SUFFIX']
-
-
-
-   # set some useful values
-   opt.scanId = opt.keyname + '-' + opt.scanDate
+   
+   # are we going to use scan date to access the Civet output files/directories?
+   if ( settings['CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME'] == 'ON' ) then
+      opt.civetScanId = opt.keyname + '-' + opt.scanDate
+   else
+      opt.civetScanId = opt.keyname
+   end
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
-
 
 
    # check Civet ID directory ... just make sure it's there, and then
    # ... create sub-directories, as required
-   civetId_dir_fullPath = File.join(CIVET_ROOT_DIR, opt.scanId)
+   civetId_dir_fullPath = File.join(CIVET_ROOT_DIR, opt.civetScanId)
    if ( !File.exists?(civetId_dir_fullPath) || !File.directory?(civetId_dir_fullPath) ) then
-      puts sprintf("\n!!! Error: Civet validation error for scan %s", opt.scanId)
+      puts sprintf("\n!!! Error: Civet validation error for scan %s", opt.civetScanId)
       puts sprintf("Civet ID subdirectory [%s] does not exist", civetId_dir_fullPath)
       exit
    end
@@ -135,7 +136,7 @@ begin
    filename = File.join(keyname_dir_fullPath, aal_subdir_name)
    if !File.exists?( filename ) then FileUtils.mkdir( filename ) end
    # write ID of associated anatomical scan into the directory
-   File.open(File.join(filename,'civet_scan_id.txt'), 'w') {|f| f.write("#{opt.scanId}\n");f.close}
+   File.open(File.join(filename,'civet_scan_id.txt'), 'w') {|f| f.write("#{opt.civetScanId}\n");f.close}
    #
    filename = File.join(keyname_dir_fullPath, aal_subdir_name, "logs")
    if !File.exists?( filename ) then FileUtils.mkdir( filename ) end
@@ -149,7 +150,7 @@ begin
    filename = File.join(keyname_dir_fullPath, masks_subdir_name)
    if !File.exists?( filename ) then FileUtils.mkdir( filename ) end
    # write ID of associated anatomical scan into the directory
-   File.open(File.join(filename,'civet_scan_id.txt'), 'w') {|f| f.write("#{opt.scanId}\n");f.close}
+   File.open(File.join(filename,'civet_scan_id.txt'), 'w') {|f| f.write("#{opt.civetScanId}\n");f.close}
    #
    filename = File.join(keyname_dir_fullPath, masks_subdir_name, "logs")
    if !File.exists?( filename ) then FileUtils.mkdir( filename ) end
@@ -160,7 +161,7 @@ begin
    filename = File.join(keyname_dir_fullPath, vbm_subdir_name)
    if !File.exists?( filename ) then FileUtils.mkdir( filename ) end
    # write ID of associated anatomical scan into the directory
-   File.open(File.join(filename,'civet_scan_id.txt'), 'w') {|f| f.write("#{opt.scanId}\n");f.close}
+   File.open(File.join(filename,'civet_scan_id.txt'), 'w') {|f| f.write("#{opt.civetScanId}\n");f.close}
    #
    filename = File.join(keyname_dir_fullPath, vbm_subdir_name, "logs")
    if !File.exists?( filename ) then FileUtils.mkdir( filename ) end
@@ -174,7 +175,7 @@ begin
    filename = File.join(keyname_dir_fullPath, thickness_subdir_name)
    if !File.exists?( filename ) then FileUtils.mkdir( filename ) end
    # write ID of associated anatomical scan into the directory
-   File.open(File.join(filename,'civet_scan_id.txt'), 'w') {|f| f.write("#{opt.scanId}\n");f.close}
+   File.open(File.join(filename,'civet_scan_id.txt'), 'w') {|f| f.write("#{opt.civetScanId}\n");f.close}
    #
    filename = File.join(keyname_dir_fullPath, thickness_subdir_name, "tmp")
    if !File.exists?( filename ) then FileUtils.mkdir( filename ) end
@@ -192,24 +193,24 @@ begin
 
    # put a copy of various Civet files in here, for visualization convenience
    # ... final spatially normalized T1 volume
-   civetId_dir_fullPath = File.join(CIVET_ROOT_DIR, opt.scanId)
-   from_filename = CIVET_PREFIX + opt.scanId + CIVET_FINAL_T1_VOLUME_SUFFIX
+   civetId_dir_fullPath = File.join(CIVET_ROOT_DIR, opt.civetScanId)
+   from_filename = CIVET_PREFIX + opt.civetScanId + CIVET_FINAL_T1_VOLUME_SUFFIX
    from_filename_fullPath = File.join(civetId_dir_fullPath, 'final', from_filename)
    to_dir = File.join(keyname_dir_fullPath, "visualization")
    to_filename_fullPath = File.join(to_dir, from_filename)
    if !File.exists?( to_filename_fullPath ) then FileUtils.cp(from_filename_fullPath, to_dir) end
    #
    # ... left hemisphere gray matter surface
-   civetId_dir_fullPath = File.join(CIVET_ROOT_DIR, opt.scanId)
-   from_filename = CIVET_PREFIX + opt.scanId + CIVET_SURFACE_GRAY_LEFT_SUFFIX
+   civetId_dir_fullPath = File.join(CIVET_ROOT_DIR, opt.civetScanId)
+   from_filename = CIVET_PREFIX + opt.civetScanId + CIVET_SURFACE_GRAY_LEFT_SUFFIX
    from_filename_fullPath = File.join(civetId_dir_fullPath, 'surfaces', from_filename)
    to_dir = File.join(keyname_dir_fullPath, "visualization")
    to_filename_fullPath = File.join(to_dir, from_filename)
    if !File.exists?( to_filename_fullPath ) then FileUtils.cp(from_filename_fullPath, to_dir) end
    #
    # ... right hemisphere gray matter surface
-   civetId_dir_fullPath = File.join(CIVET_ROOT_DIR, opt.scanId)
-   from_filename = CIVET_PREFIX + opt.scanId + CIVET_SURFACE_GRAY_RIGHT_SUFFIX
+   civetId_dir_fullPath = File.join(CIVET_ROOT_DIR, opt.civetScanId)
+   from_filename = CIVET_PREFIX + opt.civetScanId + CIVET_SURFACE_GRAY_RIGHT_SUFFIX
    from_filename_fullPath = File.join(civetId_dir_fullPath, 'surfaces', from_filename)
    to_dir = File.join(keyname_dir_fullPath, "visualization")
    to_filename_fullPath = File.join(to_dir, from_filename)

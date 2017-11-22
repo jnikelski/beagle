@@ -30,9 +30,8 @@ begin
    opt.fake                = false
    #
    opt.keyname             = ""                 # subject keyname
-   opt.scanDate            = ""
-   opt.scanId              = ""                 # this is a derived value
-   opt.civetScanDate       = ""
+   opt.scanId              = ""
+   opt.civetScanId         = ""
    opt.settingsFile        = ""
    #
    opt.gmMaskVol           = ""                 # gray matter mask volume
@@ -55,14 +54,14 @@ begin
          puts "** subject keyname: " + opt.keyname if opt.verbose
       end
 
-      opts.on('--scanDate scan_date', "Format YYYYMMDD") do |scanDate|
-         opt.scanDate = scanDate
-         puts "** scan date: " + opt.scanDate if opt.verbose
+      opts.on('--scanId pib_scan_id', "Usually a scan date of format YYYYMMDD") do |scanId|
+         opt.scanId = scanId
+         puts "** scan date: " + opt.scanId if opt.verbose
       end
 
-      opts.on('--civetScanDate civet_scan_id', "Format keyname-scanDate") do |civetScanDate|
-         opt.civetScanDate = civetScanDate
-         puts "** Civet scan date: " + opt.civetScanDate if opt.verbose
+      opts.on('--civetScanId civet_scan_id', "Usually a scan date of format YYYYMMDD") do |civetScanId|
+         opt.civetScanId = civetScanId
+         puts "** Civet scan date: " + opt.civetScanId if opt.verbose
       end
 
       opts.on('--settingsFile aggregated_settings_file', "Fullpath to the aggregated settings file ") do |settingsFile|
@@ -128,11 +127,14 @@ begin
    RATIOS_VOLUME_PATTERN = '*_pibRatios_*.mnc'
 
    # set some useful values/paths
-   opt.scanId = opt.keyname + '-' + opt.scanDate
-   opt.civetScanId = opt.keyname + '-' + opt.civetScanDate
+   if ( settings['CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME'] == 'ON' ) then
+      civetScan_dir = opt.keyname + '-' + opt.civetScanId
+   else
+      civetScan_dir = opt.keyname
+   end
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
    #
-   pib_dir = 'PiB-' + opt.scanDate
+   pib_dir = 'PiB-' + opt.scanId
    pib_dir_fullPath = File.join(keyname_dir_fullPath, pib_dir)
    pibRatios_dir_fullPath = File.join(pib_dir_fullPath, 'ratios')
    pibLogs_dir_fullPath = File.join(pib_dir_fullPath, 'logs')
@@ -144,14 +146,14 @@ begin
    # * * * * *  START of input argument validation   * * * * *
    #
    # keyname has been entered?
-   if ( opt.keyname.empty? or opt.scanDate.empty? ) then
+   if ( opt.keyname.empty? or opt.scanId.empty? ) then
       puts "\n*** Error: Subject keyname OR PiB scan date is missing"
       puts opts
       exit
    end
 
    # Civet scan date entered?
-   if ( opt.civetScanDate.empty? ) then
+   if ( opt.civetScanId.empty? ) then
       puts "\n*** Error: Civet scan date is missing"
       puts opts
       exit
@@ -186,8 +188,8 @@ begin
    # load subject's master logfile; write a start message
    progname = 'beagle_pib_volumetric_visualization'
    logger = BeagleLogger.new(opt.keyname, settings, eraseLog=false)
-   logger.log_start_message(progname, opt.keyname, 'PiB', opt.scanDate)
-   logger.log_message(progname, opt.keyname, 'PiB', opt.scanDate, 'civet_version', CIVET_VERSION)
+   logger.log_start_message(progname, opt.keyname, 'PiB', opt.scanId)
+   logger.log_message(progname, opt.keyname, 'PiB', opt.scanId, 'civet_version', CIVET_VERSION)
 
    # now that we've verified that we have a /logs subdir,
    # ... set processing status to "running"
@@ -234,7 +236,7 @@ begin
    set_job_status(pibLogs_dir_fullPath, "beagle_pib_volumetric_visualization_JobStatus", "finished")
 
    # log a 'done' message to the subject's master logfile, and then write out logfile
-   logger.log_stop_message(progname, opt.keyname, 'PiB', opt.scanDate)
+   logger.log_stop_message(progname, opt.keyname, 'PiB', opt.scanId)
    logger.save_to_file()
 
 rescue RuntimeError => e

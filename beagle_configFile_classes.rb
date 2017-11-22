@@ -425,19 +425,19 @@ class CivetSubjectDetails
    # define accessors
    attr_accessor :subjectEntries
 
-   def initialize(file_in, settings)
-      print "\nChecking integrity of Civet config file [#{file_in}] ... " if settings.verbose
+   def initialize(file_in, opt, settings)
+      print "\nChecking integrity of Civet config file [#{file_in}] ... " if opt.verbose
       check_subject_info_file(file_in, 2)
-      puts "OK" if settings.verbose
+      puts "OK" if opt.verbose
       
-      print "Loading file #{file_in} ... " if settings.verbose
-      self.load_from_file(file_in)
-      puts "OK" if settings.verbose
+      print "Loading file #{file_in} ... " if opt.verbose
+      self.load_from_file(file_in, opt, settings)
+      puts "OK" if opt.verbose
       
    end
 
 
-   def load_from_file(file_in)
+   def load_from_file(file_in, opt, settings)
       #
       # return: 
       #     @subjectEntries:     an array of subject names
@@ -451,7 +451,7 @@ class CivetSubjectDetails
       csv.each_with_index{ |row, ndx|
          #
          # parse the line; if end-of-file?, break out
-         entry = parse_subject_line(row)
+         entry = parse_subject_line(row, opt, settings)
          if ( entry["keyname"] ==  "eof" ) then break end
       
          # skip over comments
@@ -466,25 +466,26 @@ class CivetSubjectDetails
    end
 
 
-   def parse_subject_line(line_in)
+   def parse_subject_line(line_in, opt, settings)
    # ==============================================================================
    # Function: parse_subject_line
    # Purpose:
    #     Given a line read from the Civet subject info file, parse it and then
    #     return a hash containing:
    #
-   #     keyname, scanId, scanDate
+   #     keyname, scan identifier
    #
    # Input line:
    #  field 1: keyname
-   #  field 2: unique Civet scan-id
+   #  field 2: unique (within keyname) Civet scan-id (e.g., scan date, etc)
    #
    # Example:
-   #  brynhild,brynhild-20100806
+   #  brynhild,20100806
    #
    # ==============================================================================
    #
-
+      #print "\n*** in method parse_subject_line ... \n" if opt.debug
+      
       # define the return Hash
       values = Hash.new
       
@@ -503,18 +504,16 @@ class CivetSubjectDetails
          return values
       end
 
-      # get contents of the 4 fields
-      field_1 = csv_parts[0]
-      field_2 = csv_parts[1]
+      # get contents of the 2 fields
+      values["keyname"] = csv_parts[0]
+      values["scanId"] = csv_parts[1]
 
-      # field 1 can be stored directly
-      values["keyname"] = field_1
-      
-      # field 2 needs to have the civet_scan_date value extracted
-      # ... e.g. ainvar-20081211 --> 20081211
-      values["scanId"] = field_2
-      field_2_parts = field_2.split('-')
-      values["scanDate"] = field_2_parts[1]
+      # set Civet scan Id according to settings for this dataset
+      if ( settings['CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME'] == 'ON' ) then
+         values["civetScanId"] = values["keyname"] + '-' + values["scanId"]
+      else
+         values["civetScanId"] = values["keyname"]
+      end
 
       # done. Return the extracted values
       return values

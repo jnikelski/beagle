@@ -201,12 +201,13 @@ begin
       #
       # load all subject entries from the Civet config file
       puts "Processing Civet file #{settings['CIVET_SUBJECT_INFO']}" if opt.verbose
-      civet_subj_details = CivetSubjectDetails.new(settings['CIVET_SUBJECT_INFO'], opt)
+      civet_subj_details = CivetSubjectDetails.new(settings['CIVET_SUBJECT_INFO'], opt, settings)
       pp(civet_subj_details) if opt.debug
       
       # loop over all Civet entries for this subject 
       # ... keyname must be passed as an array
       scans = civet_subj_details.select_entries_by_keyname([keyname])
+      pp scans if opt.debug
       
       # we must have at least one entry, else error
       if ( scans.length < 1 ) then
@@ -218,23 +219,33 @@ begin
       scans.each{ |scan_item|
       
          # initialization
+         puts "Building *beagle_anatomical_initialization* command " if opt.debug
          cmd << buildCmd_beagle_anatomical_initialization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
          
          # Labels
+         puts "Building *beagle_labels_fit_AAL* command " if opt.debug
          cmd << buildCmd_beagle_labels_fit_AAL(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
          
          # Masks
+         puts "Building *beagle_masks_generate_from_labels* command " if opt.debug
          cmd << buildCmd_beagle_masks_generate_from_labels(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
          
          # VBM
+         puts "Building *beagle_vbm_compute_individ_VBM* command " if opt.debug
          cmd << buildCmd_beagle_vbm_compute_individ_VBM(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+         puts "Building *beagle_vbm_quantification* command " if opt.debug
          cmd << buildCmd_beagle_vbm_quantification(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+         puts "Building *beagle_vbm_volumetric_visualization* command " if opt.debug
          cmd << buildCmd_beagle_vbm_volumetric_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
          
          # CTA
+         puts "Building *beagle_thickness_compute_zscores* command " if opt.debug
          cmd << buildCmd_beagle_thickness_compute_zscores(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+         puts "Building *beagle_thickness_extract_surface_labels* command " if opt.debug
          cmd << buildCmd_beagle_thickness_extract_surface_labels(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+         puts "Building *beagle_thickness_compute_roi_statistics* command " if opt.debug
          cmd << buildCmd_beagle_thickness_compute_roi_statistics(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+         puts "Building *beagle_thickness_surface_visualization* command " if opt.debug
          cmd << buildCmd_beagle_thickness_surface_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
 
       }  # subject scans loop
@@ -256,14 +267,23 @@ begin
          puts sprintf("\n*** Info: To-be-run subject [%s] does not have any entries in the PiB configuration file", keyname)
       else
          scans.each{ |scan_item|
+            puts "Building *beagle_pib_initialization* command " if opt.debug
             cmd << buildCmd_beagle_pib_initialization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            puts "Building *beagle_pib_convert_ecat2mnc* command " if opt.debug
             cmd << buildCmd_beagle_pib_convert_ecat2mnc(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            puts "Building *beagle_pib_preprocess* command " if opt.debug
             cmd << buildCmd_beagle_pib_preprocess(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            puts "Building *beagle_pib_generate_masks* command " if opt.debug
             cmd << buildCmd_beagle_pib_generate_masks(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            puts "Building *beagle_pib_preprocess_verification* command " if opt.debug
             cmd << buildCmd_beagle_pib_preprocess_verification(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            puts "Building *beagle_pib_compute_ratios* command " if opt.debug
             cmd << buildCmd_beagle_pib_compute_ratios(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            puts "Building *beagle_pib_compute_SUVR* command " if opt.debug
             cmd << buildCmd_beagle_pib_compute_SUVR(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            puts "Building *beagle_pib_volumetric_visualization* command " if opt.debug
             cmd << buildCmd_beagle_pib_volumetric_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            puts "Building *beagle_pib_surface_visualization* command " if opt.debug
             cmd << buildCmd_beagle_pib_surface_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
          }  # subject scans loop
       end
@@ -286,19 +306,28 @@ begin
          puts sprintf("\n*** Info: To-be-run subject [%s] does not have any entries in the FDG configuration file", keyname)
       else
          scans.each{ |scan_item|
+            puts "Building *beagle_fdg_initialization* command " if opt.debug
             cmd << buildCmd_beagle_fdg_initialization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            puts "Building *beagle_fdg_convert_native2mnc* command " if opt.debug
             cmd << buildCmd_beagle_fdg_convert_native2mnc(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            puts "Building *beagle_fdg_preprocess* command " if opt.debug
             cmd << buildCmd_beagle_fdg_preprocess(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            puts "Building *beagle_fdg_preprocess_verification* command " if opt.debug
             cmd << buildCmd_beagle_fdg_preprocess_verification(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            puts "Building *beagle_fdg_compute_ratios* command " if opt.debug
             cmd << buildCmd_beagle_fdg_compute_ratios(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            puts "Building *beagle_fdg_compute_SUVR* command " if opt.debug
             cmd << buildCmd_beagle_fdg_compute_SUVR(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            puts "Building *beagle_fdg_volumetric_visualization* command " if opt.debug
             cmd << buildCmd_beagle_fdg_volumetric_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            puts "Building *beagle_fdg_surface_visualization* command " if opt.debug
             cmd << buildCmd_beagle_fdg_surface_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
          }  # subject scans loop
       end
       
       
       # [D]  Report generation
+      puts "Building *beagle_make_summary_report* command " if opt.debug
       cmd << buildCmd_beagle_make_summary_report(keyname, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
 
       # print finish date/time
@@ -313,6 +342,7 @@ begin
       File.chmod(0744, driverFilename_fullpath)
       
       # if submitting to SGE, we need to append some extra stuff
+      jobname = 'BGL-' + keyname
       filename = 'run-' + LORIS_RUN_IDENTIFIER + '.log'
       logfile_fullPath = File.join(keynameLogs_dir_fullPath, filename)
       if ( opt.SGE ) then
@@ -322,7 +352,7 @@ begin
          cmdSge << "-cwd "
          cmdSge << "-j y "
          cmdSge << "-V "
-         cmdSge << "-N #{keyname}  "
+         cmdSge << "-N #{jobname}  "
          cmdSge << "-o #{logfile_fullPath}    "
          cmdSge << "-l hostname=#{settings['SGE_EXECUTION_HOST']}   "
          cmdSge << "#{driverFilename_fullpath}"

@@ -6,7 +6,7 @@ library(beagle.statistics)
 # (1) keyname           [ e.g., tofty]
 # (2) rootDir           [ the Loris output root, containing all keyname subdirs]
 # (3) analysis_type     [ VBM, PiB, FDG, THICKNESS, etc ... must match subdir prefix]
-# (4) scan_date         [ YYYYMMDD ... must match subdir suffix]
+# (4) scan_id           [ YYYYMMDD ... must match subdir suffix]
 # (5) settings_filename [ fullpath to the aggregated settings file]
 #
 source("args_file.txt")
@@ -16,7 +16,7 @@ settings <- read_beagle_aggregated_settings(settings_filename, verbose=FALSE)
 #print(settings)
 
 # construct useful filename
-vbm_subdir <- paste(analysis_type, scan_date, sep="-")
+vbm_subdir <- paste(analysis_type, scan_id, sep="-")
 vbm_subdir_fullPath <- file.path(rootDir, keyname, vbm_subdir)
 vbmImages_subdir_fullPath <- file.path(vbm_subdir_fullPath, 'images')
 
@@ -34,8 +34,8 @@ pdf_wm_fullPath <- file.path(vbmImages_subdir_fullPath, pdf_wm_filename)
 
 @
 
-\chapter{Findings: \texttt{VBM-\Sexpr{scan_date}}}
-In this chapter, we present the findings of the voxel-based morphometric (VBM) analysis for subject \texttt{\Sexpr{keyname}}, based on the T1 scan acquired on \texttt{\Sexpr{scan_date}}. Before we start with the review of the results, let's first be careful \emph{never} to interpret the number of voxels reported as volume of tissue loss. Doing this is really quite tempting, since, given that our voxels are 1-mm isometric, it would be very simple to report our findings as a volume. Reviewers would not be pleased if we did this. It would be better to interpret the number of supra-threshold voxels as an indicator of relative atrophy, and should be used in our analyses as such.
+\chapter{Findings: \texttt{VBM-\Sexpr{scan_id}}}
+In this chapter, we present the findings of the voxel-based morphometric (VBM) analysis for subject \texttt{\Sexpr{keyname}}, based on the T1 scan acquired on \texttt{\Sexpr{scan_id}}. Before we start with the review of the results, let's first be careful \emph{never} to interpret the number of voxels reported as volume of tissue loss. Doing this is really quite tempting, since, given that our voxels are 1-mm isometric, it would be very simple to report our findings as a volume. Reviewers would not be pleased if we did this. It would be better to interpret the number of supra-threshold voxels as an indicator of relative atrophy, and should be used in our analyses as such.
 
 <<echo=FALSE>>=
 # read in the simple summary table

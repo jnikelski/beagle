@@ -42,7 +42,7 @@ option_list <- list(
 
    make_option(c("--scanDate"), 
          action="store", 
-         type="character", default=NULL, dest="scanDate",
+         type="character", default=NULL, dest="scanId",
          help="Civet scan date for subject. (E.g. \"20071009\")"),
                
    make_option(c("--settingsFile"), 
@@ -81,24 +81,31 @@ print(opts_in)
 
 
 #DEBUG 1 ===========================================
+#beagle_thickness_compute_roi_statistics.Rscript   -v -d 
+#--keyname p159 
+#--scanDate  20161027  
+#--settingsFile /home/jnikelski/localData/joubertLab_processing/beagle/xrun_20171109A/results/loris_aggregated_settings_starbuckVM-20171109A.json 
+#--thicknessVectorFile /home/jnikelski/localData/joubertLab_processing/beagle/xrun_20171109A/results/p159/THICKNESS-20161027/p159_thickness_lhrh.txt  
+#--zscoresVectorFile /home/jnikelski/localData/joubertLab_processing/beagle/xrun_20171109A/results/p159/THICKNESS-20161027/p159_thickness_zscores.txt  
+#--surfaceLabelsVectorFile /home/jnikelski/localData/joubertLab_processing/beagle/xrun_20171109A/results/p159/THICKNESS-20161027/p159_extracted_aal_surface_labels.txt
+#
 #opts_in <- list()
 #opts_in$verbose <- TRUE
 #opts_in$debug <- TRUE
-#opts_in$keyname <- "fenrir"
-#opts_in$scanDate <- "20071009"
-#opts_in$settingsFile <- "..."
-
-#opts_in$thicknessVectorFile <- "/data/raid01/lorisData/zzzOutput_lorisX/fenrir/THICKNESS-20100929/fenrir_thickness_lhrh.txt"
-#opts_in$zscoresVectorFile <- "/data/raid01/lorisData/zzzOutput_lorisX/fenrir/THICKNESS-20100929/fenrir_thickness_zscores.txt"
-#opts_in$surfaceLabelsVectorFile <- "/data/raid01/lorisData/zzzOutput_lorisX/fenrir/THICKNESS-20100929/fenrir_extracted_aal_surface_labels.txt"
+#opts_in$keyname <- "p159"
+#opts_in$scanId <- "20161027"
+#opts_in$settingsFile <- "/home/jnikelski/localData/joubertLab_processing/beagle/xrun_20171109A/results/loris_aggregated_settings_starbuckVM-20171109A.json"
+#
+#opts_in$thicknessVectorFile <- "/home/jnikelski/localData/joubertLab_processing/beagle/xrun_20171109A/results/p159/THICKNESS-20161027/p159_thickness_lhrh.txt"
+#opts_in$zscoresVectorFile <- "/home/jnikelski/localData/joubertLab_processing/beagle/xrun_20171109A/results/p159/THICKNESS-20161027/p159_thickness_zscores.txt"
+#opts_in$surfaceLabelsVectorFile <- "/home/jnikelski/localData/joubertLab_processing/beagle/xrun_20171109A/results/p159/THICKNESS-20161027/p159_extracted_aal_surface_labels.txt"
 #
 log_file <- "loggingBySGE"
 #DEBUG 1 ===========================================
 
 
 # add some extra derived values to the input packet
-opts_in$scanId <- paste(opts_in$keyname, opts_in$scanDate, sep="-")
-opts_in$cta_dirname <- paste("THICKNESS", opts_in$scanDate, sep="-")
+opts_in$cta_dirname <- paste("THICKNESS", opts_in$scanId, sep="-")
 
 
 
@@ -115,6 +122,7 @@ if ( log_file != "loggingBySGE" ) {
 
 # load the HCLab beagle.statistics Analyis library
 library(beagle.statistics)
+library(stringr)
 #suppressPackageStartupMessages(library(beagle.statistics))  
 
 
@@ -151,20 +159,17 @@ ctaLogs_dir_fullPath <- file.path(cta_dir_fullPath, "logs")
 ctaImages_dir_fullPath <- file.path(cta_dir_fullPath, "images")
 
 
-
-
 # set working directory as the THICKNESS subject root dir
 wrkDir <- cta_dir_fullPath
 setwd(wrkDir)
 
 
-
 # load subject's master logfile, and then write a start message
-llogger <- loris_logger_loadFromFile(opts_in$keyname, settings)
+llogger <- beagle_logger_loadFromFile(opts_in$keyname, settings)
 progname <- 'beagle_thickness_compute_roi_statistics.Rscript'
-llogger <- loris_logger_logStartMessage(progname, opts_in$keyname, 'THICKNESS', opts_in$scanDate, llogger)
-llogger <- loris_logger_logMessage(progname, opts_in$keyname, 'THICKNESS',
-                                       opts_in$scanDate,
+llogger <- beagle_logger_logStartMessage(progname, opts_in$keyname, 'THICKNESS', opts_in$scanId, llogger)
+llogger <- beagle_logger_logMessage(progname, opts_in$keyname, 'THICKNESS',
+                                       opts_in$scanId,
                                        'civet_version', CIVET_VERSION,
                                        llogger)
 
@@ -190,6 +195,10 @@ lbl_details.df$ct_stdev <- rep(NA, nrow(lbl_details.df))
 lbl_details.df$z_mean <- rep(NA, nrow(lbl_details.df))
 lbl_details.df$z_stdev <- rep(NA, nrow(lbl_details.df))
 print(lbl_details.df)
+
+# add columns for LH/RH (use stringr to extract last character of the label name)
+hemisphere <- str_sub(lbl_details.df$LabelName, -1)
+lbl_details.df$hemisphere <- factor(hemisphere, levels=c("L","R","LR"), labels=c("LH","RH","LHRH"))
 
 # load vertex-level info from vector files
 thickness.vec <- scan(opts_in$thicknessVectorFile, nmax=CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN)
@@ -223,12 +232,61 @@ for ( ndx in 1:nrow(lbl_details.df) ) {
 }
 print(lbl_details.df)
 
+#
+# Add 3 rows at the end of the results dataframe, comprising a break-down by hemisphere (left, right, both)
+# Note: this breakdown is a straight analysis of *all* left and right hemisphere vertex thicknesses.  I do
+#       *not* try to weight or compute by label.
+side <- c(rep(1,CIVET_SURFACE_NO_OF_VERTICES_LEFT), rep(2,CIVET_SURFACE_NO_OF_VERTICES_RIGHT))
+thickness.df <- data.frame(thickness=thickness.vec, 
+                        side=factor(side, levels=c(1,2), labels=c("LH","RH")))
+
+# Great. Now create a new dataframe comprising 3 rows -- 1 for each new result
+# clear out the stuff we don't need
+hemi_rx.df <- lbl_details.df[1:3,]
+hemi_rx.df$ct_mean <- NA
+hemi_rx.df$ct_stdev <- NA
+hemi_rx.df$z_mean <- NA
+hemi_rx.df$z_stdev <- NA
+hemi_rx.df$LabelNo <- NA
+hemi_rx.df$LabelName <- NA
+#
+hemi_rx.df$Description[1] <- "Left Hemisphere"
+hemi_rx.df$Abbrev[1] <- "LHOnly"
+hemi_rx.df$size[1] <- CIVET_SURFACE_NO_OF_VERTICES_LEFT
+hemi_rx.df$hemisphere[1] <- "LH"
+#
+hemi_rx.df$Description[2] <- "Right Hemisphere"
+hemi_rx.df$Abbrev[2] <- "RHOnly"
+hemi_rx.df$size[2] <- CIVET_SURFACE_NO_OF_VERTICES_RIGHT
+hemi_rx.df$hemisphere[2] <- "RH"
+#
+# compute by hemisphere and store values
+stats.v <- tapply(thickness.df$thickness, thickness.df$side, mean)
+hemi_rx.df$ct_mean[1] <- stats.v["LH"]
+hemi_rx.df$ct_mean[2] <- stats.v["RH"]
+#
+stats.v <- tapply(thickness.df$thickness, thickness.df$side, sd)
+hemi_rx.df$ct_stdev[1] <- stats.v["LH"]
+hemi_rx.df$ct_stdev[2] <- stats.v["RH"]
+#
+# compute total and store
+hemi_rx.df$Description[3] <- "Whole Brain"
+hemi_rx.df$Abbrev[3] <- "LH+RH"
+hemi_rx.df$size[3] <- CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN
+hemi_rx.df$hemisphere[3] <- "LHRH"
+hemi_rx.df$ct_mean[3] <- mean(thickness.df$thickness)
+hemi_rx.df$ct_stdev[3] <- sd(thickness.df$thickness)
+print(hemi_rx.df)
+#
+# append to end of results dataframe
+lbl_detailsX.df <- rbind(lbl_details.df, hemi_rx.df)
+
 
 # write out the results to a csv file (append keyname and dirname first)
 quant_csv.df <- cbind(uniqueId=paste(opts_in$keyname, opts_in$cta_dirname, sep="-"),
                         keyname=opts_in$keyname, 
                         dirname=opts_in$cta_dirname, 
-                        lbl_details.df)
+                        lbl_detailsX.df)
 
 csvFilename <- paste(opts_in$keyname,
                      "_thickness_statistics_by_roi_",
@@ -251,8 +309,8 @@ file.rename(status_filename_running, status_filename_finished)
 
 
 # log a 'done' message to the subject's master logfile, and then write out logfile
-llogger <- loris_logger_logStopMessage(progname, opts_in$keyname, 'THICKNESS', opts_in$scanDate, llogger)
-loris_logger_saveToFile(opts_in$keyname, llogger, settings)
+llogger <- beagle_logger_logStopMessage(progname, opts_in$keyname, 'THICKNESS', opts_in$scanId, llogger)
+beagle_logger_saveToFile(opts_in$keyname, llogger, settings)
 
 
 

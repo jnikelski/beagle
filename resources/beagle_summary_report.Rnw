@@ -72,7 +72,7 @@ library(beagle.statistics)
 # (1) keyname           [ e.g., tofty]
 # (2) rootDir           [ the Loris output root, containing all keyname subdirs]
 # (3) analysis_type     [ VBM, PiB, FDG, THICKNESS, etc ... must match subdir prefix]
-# (4) scan_date         [ YYYYMMDD ... must match subdir suffix]
+# (4) scan_id           [ YYYYMMDD ... must match subdir suffix]
 # (5) settings_filename [ fullpath to the aggregated settings file]
 #
 source("args_file.txt")

@@ -32,8 +32,7 @@ begin
    #                                            #    -mi, -nmi, -xcorr
    #
    opt.keyname             = ""
-   opt.scanDate            = ""
-   opt.scanId              = ""                 # this is a derived value
+   opt.scanId              = ""
    opt.settingsFile        = ""
    #
    opt.civetScanId         = ""
@@ -68,12 +67,12 @@ begin
          puts "** keyname: " + opt.keyname if opt.verbose
       end
       
-      opts.on('--scanDate scan_date', "Format YYYYMMDD") do |scanDate|
-         opt.scanDate = scanDate
-         puts "** scan date: " + opt.scanDate if opt.verbose
+      opts.on('--scanId pib_scan_id', "Usually a scan date of format YYYYMMDD") do |scanId|
+         opt.scanId = scanId
+         puts "** scan date: " + opt.scanId if opt.verbose
       end
 
-      opts.on('--civetScanId civet_scan_id', "Format keyname-scanDate") do |civetScanId|
+      opts.on('--civetScanId civet_scan_id', "Usually a scan date of format YYYYMMDD") do |civetScanId|
          opt.civetScanId = civetScanId
          puts "** Civet scan Id: " + opt.civetScanId if opt.verbose
       end
@@ -122,10 +121,16 @@ begin
    CIVET_PREFIX = settings['CIVET_PREFIX'] + '_'
 
    # set some useful values
-   opt.scanId = opt.keyname + '-' + opt.scanDate
+   #
+   # are we going to use scan date to access the Civet output files/directories?
+   if ( settings['CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME'] == 'ON' ) then
+      civetScan_dir = opt.keyname + '-' + opt.civetScanId
+   else
+      civetScan_dir = opt.keyname
+   end
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
    #
-   pib_dir = 'PiB-' + opt.scanDate
+   pib_dir = 'PiB-' + opt.scanId
    pib_dir_fullPath = File.join(keyname_dir_fullPath, pib_dir)
    pibTmp_dir_fullPath = File.join(pib_dir_fullPath, 'tmp')
    pibLogs_dir_fullPath = File.join(pib_dir_fullPath, 'logs')
@@ -138,7 +143,7 @@ begin
    # * * * * *  START of input argument validation   * * * * *
    #
    # keyname has been entered?
-   if ( opt.keyname.empty? or opt.scanDate.empty? ) then
+   if ( opt.keyname.empty? or opt.scanId.empty? ) then
       puts "\n*** Error: Subject keyname OR PiB scan date is missing"
       puts opts
       exit
@@ -183,8 +188,8 @@ begin
    # load subject's master logfile; write a start message
    progname = 'beagle_pib_preprocess'
    logger = BeagleLogger.new(opt.keyname, settings, eraseLog=false)
-   logger.log_start_message(progname, opt.keyname, 'PiB', opt.scanDate)
-   logger.log_message(progname, opt.keyname, 'PiB', opt.scanDate, 'civet_version', CIVET_VERSION)
+   logger.log_start_message(progname, opt.keyname, 'PiB', opt.scanId)
+   logger.log_message(progname, opt.keyname, 'PiB', opt.scanId, 'civet_version', CIVET_VERSION)
 
    # now that we've verified that we have a /logs subdir,
    # ... set processing status to "running"
@@ -221,7 +226,7 @@ begin
    cmd << "--minctraccOpts \'#{opt.minctraccOpts}\'  "
    cmd << "--civetPrefix #{CIVET_PREFIX}  "
    cmd << "--civetDir #{CIVET_ROOT_DIR} "
-   cmd << "--civetScanId #{opt.civetScanId} "
+   cmd << "--civetScanId #{civetScan_dir} "
    cmd << "--outDir #{pibTmp_dir_fullPath} "
    cmd << "--tmpDir #{pibTmp_dir_fullPath} "
    cmd << "#{volume_out}  "
@@ -274,7 +279,7 @@ begin
    set_job_status(pibLogs_dir_fullPath, "beagle_pib_preprocess_JobStatus", "finished")
 
    # log a 'done' message to the subject's master logfile, and then write out logfile
-   logger.log_stop_message(progname, opt.keyname, 'PiB', opt.scanDate)
+   logger.log_stop_message(progname, opt.keyname, 'PiB', opt.scanId)
    logger.save_to_file()
 
 rescue RuntimeError => e

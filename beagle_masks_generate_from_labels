@@ -25,6 +25,7 @@ require 'pp'
 require 'hclab_function_library'
 require 'beagle_function_library'
 require 'beagle_logger_classes'
+require 'beagle_civet_function_library'
 
 # define some constants with global scope
 #
@@ -40,7 +41,7 @@ begin
    opt.debug               = false
    opt.fake                = false
    opt.keyname             = ""          # subject keyname
-   opt.scanId              = ""          # civet subdirectory name for a given scan
+   opt.civetScanId         = ""          # civet subdirectory name for a given scan
    opt.scanDate            = ""
    opt.aalVolname          = ""          # input subject's AAL labelled volume
    opt.classifyVolname     = ""          # input subject's tissue classification volume
@@ -137,10 +138,13 @@ begin
 
    LORIS_AAL_LABELLED_VOLUME_SUFFIX = '_t1_final_AAL120Labels.mnc'
 
-
-   # set some useful paths/values
-   opt.scanId = opt.keyname + '-' + opt.scanDate
-   
+   # are we going to use scan date to access the Civet output files/directories?
+   if ( settings['CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME'] == 'ON' ) then
+      opt.civetScanId = opt.keyname + '-' + opt.scanDate
+   else
+      opt.civetScanId = opt.keyname
+   end
+  
    keyname_dir_fullPath = File.join(LORIS_ROOT_DIR, opt.keyname)
    
    masks_dir = 'MASKS-' + opt.scanDate
@@ -180,9 +184,7 @@ begin
    # * * * * *   START of subject/scan-specific validation   * * * * *
    #
    # check for Civet-generated classify volume 
-   civetId_dir_fullPath = File.join(CIVET_ROOT_DIR, opt.scanId)
-   filename = CIVET_PREFIX + opt.scanId + CIVET_CLASSIFY_DISCRETE_VOLUME_SUFFIX
-   filename_fullPath = File.join(civetId_dir_fullPath, 'classify', filename)
+   filename_fullPath = civet_getFilenameClassify(opt.civetScanId, settings, opt)
    if !File.exists?( filename_fullPath ) then
       puts sprintf("\n!!! Error: Civet-generated tissue classification volume not found: %s", filename_fullPath)
       exit

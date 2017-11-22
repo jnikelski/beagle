@@ -29,7 +29,6 @@ begin
    opt.fake                = false
    #
    opt.keyname             = ""
-   opt.scanDate            = ""
    opt.scanId              = ""
    opt.settingsFile        = ""
    #
@@ -54,9 +53,9 @@ begin
          puts "** subject keyname: " + opt.keyname if opt.verbose
       end
 
-      opts.on('--scanDate scan_date', "Format YYYYMMDD") do |scanDate|
-         opt.scanDate = scanDate
-         puts "** scan date: " + opt.scanDate if opt.verbose
+      opts.on('--scanDate scan_date', "Format YYYYMMDD") do |scanId|
+         opt.scanId = scanId
+         puts "** scan date: " + opt.scanId if opt.verbose
       end
 
       opts.on('--settingsFile aggregated_settings_file', "Fullpath to the aggregated settings file ") do |settingsFile|
@@ -120,10 +119,8 @@ begin
    ELDERLY_MODEL_NATIVE_STDEV_THICKNESS_FILE_FULLPATH = File.join(ELDERLY_MODEL_DIR, ELDERLY_MODEL_NATIVE_STDEV_THICKNESS_FILE)
 
    # set some useful values/directories
-   opt.scanId = opt.keyname + '-' + opt.scanDate
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
-   
-   cta_dir = 'THICKNESS-' + opt.scanDate
+   cta_dir = 'THICKNESS-' + opt.scanId
    cta_dir_fullPath = File.join(keyname_dir_fullPath, cta_dir)
    ctaLogs_dir_fullPath = File.join(cta_dir_fullPath, 'logs')
 
@@ -132,7 +129,7 @@ begin
    # * * * * *   Start of input argument validation   * * * * *
 
    # keyname has been entered?
-   if ( opt.keyname.empty? or opt.scanDate.empty? ) then
+   if ( opt.keyname.empty? or opt.scanId.empty? ) then
       puts "\n*** Error: Subject keyname or civet scan date is missing (or both)"
       puts opts
       exit
@@ -151,8 +148,8 @@ begin
    # load subject's master logfile; write a start message
    progname = 'beagle_thickness_compute_zscores'
    logger = BeagleLogger.new(opt.keyname, settings, eraseLog=false)
-   logger.log_start_message(progname, opt.keyname, 'THICKNESS', opt.scanDate)
-   logger.log_message(progname, opt.keyname, 'THICKNESS', opt.scanDate, 'civet_version', CIVET_VERSION)
+   logger.log_start_message(progname, opt.keyname, 'THICKNESS', opt.scanId)
+   logger.log_message(progname, opt.keyname, 'THICKNESS', opt.scanId, 'civet_version', CIVET_VERSION)
 
    # set job status to "running"
    set_job_status(ctaLogs_dir_fullPath, "beagle_thickness_compute_zscores_JobStatus", "running")
@@ -195,7 +192,7 @@ begin
    set_job_status(ctaLogs_dir_fullPath, "beagle_thickness_compute_zscores_JobStatus", "finished")
 
    # log a 'done' message to the subject's master logfile, and then write out logfile
-   logger.log_stop_message(progname, opt.keyname, 'THICKNESS', opt.scanDate)
+   logger.log_stop_message(progname, opt.keyname, 'THICKNESS', opt.scanId)
    logger.save_to_file()
 
 rescue RuntimeError => e

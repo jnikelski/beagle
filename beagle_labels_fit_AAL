@@ -33,7 +33,7 @@ begin
    opt.fake                = false
    #
    opt.keyname             = ""
-   opt.scanId              = ""
+   opt.civetScanId         = ""
    opt.scanDate            = ""
    opt.settingsFile        = ""
 
@@ -120,8 +120,12 @@ begin
    AAL_LABEL_SURFVIZ_VOLUME_SUFFIX = '_t1_final_' + AAL_LABELS_VERSION + 'Labels_forSurfVizOnly.mnc'
    AAL_MASKED_LABEL_VOLUME_SUFFIX = '_t1_final_' + AAL_LABELS_VERSION + 'Labels_gmMask.mnc'
 
-   # set some useful values
-   opt.scanId = opt.keyname + '-' + opt.scanDate
+   # are we going to use scan date to access the Civet output files/directories?
+   if ( settings['CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME'] == 'ON' ) then
+      opt.civetScanId = opt.keyname + '-' + opt.scanDate
+   else
+      opt.civetScanId = opt.keyname
+   end
    keyname_dir_fullPath = File.join(LORIS_ROOT_DIR, opt.keyname)
 
 
@@ -167,9 +171,9 @@ begin
    #
    # non-linear transformation files
    # ... there should be two: linear xfm file and nlin grid volume
-   civetId_dir_fullPath = File.join(CIVET_ROOT_DIR, opt.scanId)
+   civetId_dir_fullPath = File.join(CIVET_ROOT_DIR, opt.civetScanId)
    dir_fullPath = File.join(civetId_dir_fullPath, 'transforms', 'nonlinear')
-   matching_pattern = File.join(dir_fullPath, '*nlfit*')
+   matching_pattern = File.join(dir_fullPath, '*_nlfit_It*')
    matching_files = Dir.glob(matching_pattern)
    # 2 files?
    if ( matching_files.size != 2 ) then
@@ -178,7 +182,7 @@ begin
    end
    #
    # Civet-generated gray matter mask (PVE)
-   filename = CIVET_PREFIX + opt.scanId + CIVET_PVE_GRAY_VOLUME_SUFFIX
+   filename = CIVET_PREFIX + opt.civetScanId + CIVET_PVE_GRAY_VOLUME_SUFFIX
    filename_fullPath = File.join(civetId_dir_fullPath, 'classify', filename)
    if !File.exists?( filename_fullPath ) then
       puts sprintf("\n!!! Error: Civet-generated gray matter mask not found: %s", filename_fullPath)
@@ -186,7 +190,7 @@ begin
    end
    #
    # Civet-generated T1 final in linear stx space
-   filename = CIVET_PREFIX + opt.scanId + CIVET_FINAL_T1_VOLUME_SUFFIX
+   filename = CIVET_PREFIX + opt.civetScanId + CIVET_FINAL_T1_VOLUME_SUFFIX
    filename_fullPath = File.join(civetId_dir_fullPath, 'final', filename)
    if !File.exists?( filename_fullPath ) then
       puts sprintf("\n!!! Error: Civet-generated T1 final volume not found: %s", filename_fullPath)
@@ -217,8 +221,8 @@ begin
    # set up a bunch of filenames that we'll be needing
    #
    # ... get the name of the nlin xfm file
-   civet_transforms_dir = File.join(CIVET_ROOT_DIR, opt.scanId, 'transforms', 'nonlinear')
-   matching_pattern = File.join(civet_transforms_dir, '*nlfit*.xfm')
+   civet_transforms_dir = File.join(CIVET_ROOT_DIR, opt.civetScanId, 'transforms', 'nonlinear')
+   matching_pattern = File.join(civet_transforms_dir, '*_nlfit_It*.xfm')
    matching_files = Dir.glob(matching_pattern)
    # ... not there?
    if ( matching_files.size == 0 ) then
@@ -234,8 +238,8 @@ begin
    nl_xfm_file = matching_files[0]
    
    # use the Civet-generated linear stx volume to define output sampling
-   civet_final_dir = File.join(CIVET_ROOT_DIR, opt.scanId, 'final')
-   like_file = CIVET_PREFIX + opt.scanId + CIVET_FINAL_T1_VOLUME_SUFFIX
+   civet_final_dir = File.join(CIVET_ROOT_DIR, opt.civetScanId, 'final')
+   like_file = CIVET_PREFIX + opt.civetScanId + CIVET_FINAL_T1_VOLUME_SUFFIX
    like_file_fullPath = File.join(civet_final_dir, like_file)
    
    # define output file name
@@ -278,8 +282,8 @@ begin
    # Great.  But now let's apply the gray matter mask to it, in order to get
    # rid of the labels that are not in gray matter.
    #
-   civet_classify_dir = File.join(CIVET_ROOT_DIR, opt.scanId, 'classify')
-   pve_mask_file = CIVET_PREFIX + opt.scanId + CIVET_PVE_GRAY_VOLUME_SUFFIX
+   civet_classify_dir = File.join(CIVET_ROOT_DIR, opt.civetScanId, 'classify')
+   pve_mask_file = CIVET_PREFIX + opt.civetScanId + CIVET_PVE_GRAY_VOLUME_SUFFIX
    pve_mask_file_fullPath = File.join(civet_classify_dir, pve_mask_file)
    
    # create a tmp dir to hold the binarized PVE mask
@@ -319,13 +323,13 @@ begin
    # create the LH surfaces ...
    #
    # define the subject's surfaces and the tmp output subdir
-   civet_surfaces_dir = File.join(CIVET_ROOT_DIR, opt.scanId, 'surfaces')
-   surfaceLh = CIVET_PREFIX + opt.scanId + CIVET_SURFACE_GRAY_LEFT_SUFFIX
+   civet_surfaces_dir = File.join(CIVET_ROOT_DIR, opt.civetScanId, 'surfaces')
+   surfaceLh = CIVET_PREFIX + opt.civetScanId + CIVET_SURFACE_GRAY_LEFT_SUFFIX
    surfaceLh_fullPath = File.join(civet_surfaces_dir, surfaceLh)
    tmpOutLh_dir = File.join(tmp_dir_fullPath, 'images_Lh')
    FileUtils.mkdir_p(tmpOutLh_dir)
    #
-   cmd = "hclab_make_surface_images  -dv --imgFlip "
+   cmd = "hclab_make_surface_images  -dv  "
    cmd << "--labels  "
    cmd << "--usercc  "
    cmd << "--colorMap=#{AAL_COLORMAP_FULLPATH}  "
@@ -338,13 +342,13 @@ begin
    # create the RH surfaces ...
    #
    # define the subject's surfaces and the tmp output subdir
-   civet_surfaces_dir = File.join(CIVET_ROOT_DIR, opt.scanId, 'surfaces')
-   surfaceRh = CIVET_PREFIX + opt.scanId + CIVET_SURFACE_GRAY_RIGHT_SUFFIX
+   civet_surfaces_dir = File.join(CIVET_ROOT_DIR, opt.civetScanId, 'surfaces')
+   surfaceRh = CIVET_PREFIX + opt.civetScanId + CIVET_SURFACE_GRAY_RIGHT_SUFFIX
    surfaceRh_fullPath = File.join(civet_surfaces_dir, surfaceRh)
    tmpOutRh_dir = File.join(tmp_dir_fullPath, 'images_Rh')
    FileUtils.mkdir_p(tmpOutRh_dir)
    #
-   cmd = "hclab_make_surface_images  -dv --imgFlip "
+   cmd = "hclab_make_surface_images  -dv  "
    cmd << "--labels  "
    cmd << "--usercc  "
    cmd << "--colorMap=#{AAL_COLORMAP_FULLPATH}  "
