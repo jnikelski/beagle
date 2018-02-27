@@ -1,4 +1,8 @@
 module ConfigFileFunctions
+   #
+   # these libs are pointed to by the RUBYLIB env variable
+   require 'beagle_civet_function_library'
+
    # ==============================================================================
    # Module: ConfigFileFunctions
    # Description:
@@ -152,19 +156,19 @@ class FdgSubjectDetails
    # define accessors
    attr_accessor :subjectEntries
 
-   def initialize(file_in, settings)
-      print "\nChecking integrity of FDG config file [#{file_in}] ... " if settings.verbose
+   def initialize(file_in, opt, settings)
+      print "\nChecking integrity of FDG config file [#{file_in}] ... " if opt.verbose
       check_subject_info_file(file_in, 4)
-      puts "OK" if settings.verbose
+      puts "OK" if opt.verbose
       
-      print "Loading file #{file_in} ... " if settings.verbose
-      self.load_from_file(file_in)
-      puts "OK" if settings.verbose
+      print "Loading file #{file_in} ... " if opt.verbose
+      self.load_from_file(file_in, opt, settings)
+      puts "OK" if opt.verbose
       
    end
 
 
-   def load_from_file(file_in)
+   def load_from_file(file_in, opt, settings)
       #
       # return: 
       #     @subjectEntries:     an array of subject names
@@ -178,7 +182,7 @@ class FdgSubjectDetails
       csv.each_with_index{ |row, ndx|
          #
          # parse the line; if end-of-file?, break out
-         entry = parse_subject_line(row)
+         entry = parse_subject_line(row, opt, settings)
          if ( entry["keyname"] ==  "eof" ) then break end
       
          # skip over comments
@@ -193,7 +197,7 @@ class FdgSubjectDetails
    end
 
 
-   def parse_subject_line(line_in)
+   def parse_subject_line(line_in, opt, settings)
    # ==============================================================================
    # Function: parse_fdg_subject_line
    # Purpose:
@@ -206,10 +210,10 @@ class FdgSubjectDetails
    #  field 1: keyname
    #  field 2: unique FDG scan-id
    #  field 3: Ecat/Dicom identifier and scan filename
-   #  field 4: unique Civet scan-id
+   #  field 4: unique Civet scan-id ... usually a date
    #
    # Example:
-   #  brynhild,brynhild-20100225,dicom;Dicom_PET,brynhild-20100806
+   #  brynhild,brynhild-20100225,dicom;Dicom_PET,20100806
    #
    # ==============================================================================
    #
@@ -238,27 +242,18 @@ class FdgSubjectDetails
       field_3 = csv_parts[2]
       field_4 = csv_parts[3]
 
-      # field 1 can be stored directly
+      # fields 1,2,4 can be stored directly
       values["keyname"] = field_1
+      values["scanDate"] = field_2
+      values["civetScanDate"] = field_4
+      values["civetScanDirectoryName"] = civet_getScanDirectoryName(values["keyname"], values["civetScanDate"], settings, opt, fullpath=false, checkExistence=false)
       
-      # field 2 needs to have the fdg_scan_date value extracted
-      # ... e.g. ainvar-20081211 --> 20081211
-      values["scanId"] = field_2
-      field_2_parts = field_2.split('-')
-      values["scanDate"] = field_2_parts[1]
-
       # field 3 contains 2 subfields with a ";" separator:
       #     subfield 1: "ecat" or "dicom"
       #     subfield 2: ecat_filename (if an ecat file) or dicom_directory_name (if dicom) 
       field_3_parts = field_3.split(';')
       values["dicomOrEcat"] = field_3_parts[0]
       values["scanFileLocation"] = field_3_parts[1]
-      
-      # field 4 needs to have the civet_scan_date value extracted
-      # ... e.g. ainvar-20081211 --> 20081211
-      values["civetScanId"] = field_4
-      field_4_parts = field_4.split('-')
-      values["civetScanDate"] = field_4_parts[1]
 
       # done. Return the extracted values
       return values
@@ -292,19 +287,19 @@ class PiBSubjectDetails
    # define accessors
    attr_accessor :subjectEntries
 
-   def initialize(file_in, settings)
-      print "\nChecking integrity of PiB config file [#{file_in}] ... " if settings.verbose
+   def initialize(file_in, opt, settings)
+      print "\nChecking integrity of PiB config file [#{file_in}] ... " if opt.verbose
       check_subject_info_file(file_in, 4)
-      puts "OK" if settings.verbose
+      puts "OK" if opt.verbose
       
-      print "Loading file #{file_in} ... " if settings.verbose
-      self.load_from_file(file_in)
-      puts "OK" if settings.verbose
+      print "Loading file #{file_in} ... " if opt.verbose
+      self.load_from_file(file_in, opt, settings)
+      puts "OK" if opt.verbose
       
    end
 
 
-   def load_from_file(file_in)
+   def load_from_file(file_in, opt, settings)
       #
       # return: 
       #     @subjectEntries:     an array of subject names
@@ -318,7 +313,7 @@ class PiBSubjectDetails
       csv.each_with_index{ |row, ndx|
          #
          # parse the line; if end-of-file?, break out
-         entry = parse_subject_line(row)
+         entry = parse_subject_line(row, opt, settings)
          if ( entry["keyname"] ==  "eof" ) then break end
       
          # skip over comments
@@ -333,7 +328,7 @@ class PiBSubjectDetails
    end
 
 
-   def parse_subject_line(line_in)
+   def parse_subject_line(line_in, opt, settings)
    # ==============================================================================
    # Function: parse_subject_line
    # Purpose:
@@ -346,7 +341,7 @@ class PiBSubjectDetails
    #  field 1: keyname
    #  field 2: unique PiB scan-id
    #  field 3: Ecat scan filename
-   #  field 4: unique Civet scan-id
+   #  field 4: unique Civet scan-id ... usually a date
    #
    # Example:
    #  brynhild,brynhild-20101030,Archambault_Gilles_20f8_14349_de7.v,brynhild-20100806
@@ -372,29 +367,13 @@ class PiBSubjectDetails
          return values
       end
 
-      # get contents of the 4 fields
-      field_1 = csv_parts[0]
-      field_2 = csv_parts[1]
-      field_3 = csv_parts[2]
-      field_4 = csv_parts[3]
-
-      # field 1 can be stored directly
-      values["keyname"] = field_1
+      # all fields can be stored directly
+      values["keyname"] = csv_parts[0]
+      values["scanDate"] = csv_parts[1]
+      values["ecatFilename"] = csv_parts[2]
+      values["civetScanDate"] = csv_parts[3]
+      values["civetScanDirectoryName"] = civet_getScanDirectoryName(values["keyname"], values["civetScanDate"], settings, opt, fullpath=false, checkExistence=false)
       
-      # field 2 needs to have the fdg_scan_date value extracted
-      # ... e.g. ainvar-20081211 --> 20081211
-      values["scanId"] = field_2
-      field_2_parts = field_2.split('-')
-      values["scanDate"] = field_2_parts[1]
-
-      # field 3 contains the ecat scan filename
-      values["ecatFilename"] = field_3
-      
-      # field 4 needs to have the civet_scan_date value extracted
-      # ... e.g. ainvar-20081211 --> 20081211
-      values["civetScanId"] = field_4
-      field_4_parts = field_4.split('-')
-      values["civetScanDate"] = field_4_parts[1]
 
       # done. Return the extracted values
       return values
@@ -506,15 +485,9 @@ class CivetSubjectDetails
 
       # get contents of the 2 fields
       values["keyname"] = csv_parts[0]
-      values["scanId"] = csv_parts[1]
-
-      # set Civet scan Id according to settings for this dataset
-      if ( settings['CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME'] == 'ON' ) then
-         values["civetScanId"] = values["keyname"] + '-' + values["scanId"]
-      else
-         values["civetScanId"] = values["keyname"]
-      end
-
+      values["civetScanDate"] = csv_parts[1]
+      values["civetScanDirectoryName"] = civet_getScanDirectoryName(values["keyname"], values["civetScanDate"], settings, opt, fullpath=false, checkExistence=false)
+      
       # done. Return the extracted values
       return values
 

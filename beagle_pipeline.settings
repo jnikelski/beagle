@@ -26,7 +26,7 @@
 #
 # number of settings in this file (INCLUDING this value)
 # ... this is used to validate the file structure 
-NBR_SETTINGS="101"
+NBR_SETTINGS="73"
 
 
 
@@ -47,15 +47,8 @@ LORIS_AGGREGATED_SETTINGS_FILE_EXTENSION=".json"
 # Loris (general) options (Use absolute paths only)
 #
 # ... what is our verion of Loris? 
-LORIS_VERSION="14.03.20"
+LORIS_VERSION="2017.1"
 #
-#
-# ... define where to find the various subject info files
-CONFIGURED_SUBJECTS_FILE="/home/jnikelski/localData/JNLab/beagle/subject_info/subjects.csv"
-CIVET_SUBJECT_INFO="/home/jnikelski/localData/JNLab/beagle/subject_info/civet_subject_info.csv"
-PIB_SUBJECT_INFO="/home/jnikelski/localData/JNLab/beagle/subject_info/pib_subject_info.csv"
-FDG_SUBJECT_INFO="/home/jnikelski/localData/JNLab/beagle/subject_info/fdg_subject_info.csv"
-
 
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -63,13 +56,20 @@ FDG_SUBJECT_INFO="/home/jnikelski/localData/JNLab/beagle/subject_info/fdg_subjec
 #
 
 # Civet version that was used to generate the anatomically-derived volumes?
+#CIVET_VERSION="1.1.9"
 CIVET_VERSION="1.1.11"
 
 # location (fullpath) of Civet output root directory
+#CIVET_ROOT_DIR="/data/raid01/adni1Data/pipeOut"
 CIVET_ROOT_DIR="/data/raid01/civetData/civetVersion_1.1.11/scans"
 
 # Civet filenaming prefix
+#CIVET_PREFIX="ADNI"
 CIVET_PREFIX="HCLab"
+
+# append scanDate to subject's keyname to create scanID (used for subject directory naming)
+#CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME="OFF"
+CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME="ON"
 
 # tissue classification tissue types
 CIVET_TISSUE_TYPE_BACKGROUND="0"
@@ -77,53 +77,16 @@ CIVET_TISSUE_TYPE_CSF="1"
 CIVET_TISSUE_TYPE_GM="2"
 CIVET_TISSUE_TYPE_WM="3"
 
-# assorted product suffixes
-#
-# final subdir
-CIVET_FINAL_T1_VOLUME_SUFFIX="_t1_final.mnc"
 
 # surface-related info
 CIVET_SURFACE_NO_OF_VERTICES_LEFT="40962"
 CIVET_SURFACE_NO_OF_VERTICES_RIGHT="40962"
 CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN="81924"
 
-# surfaces subdir
-CIVET_CLASSIFY_DIR="surfaces"
-CIVET_SURFACE_GRAY_LEFT_SUFFIX="_gray_surface_left_81920.obj"
-CIVET_SURFACE_GRAY_RIGHT_SUFFIX="_gray_surface_right_81920.obj"
-CIVET_SURFACE_RSL_GRAY_LEFT_SUFFIX="_gray_surface_rsl_left_81920.obj"
-CIVET_SURFACE_RSL_GRAY_RIGHT_SUFFIX="_gray_surface_rsl_right_81920.obj"
-#
-CIVET_SURFACE_MID_LEFT_SUFFIX="_mid_surface_left_81920.obj"
-CIVET_SURFACE_MID_RIGHT_SUFFIX="_mid_surface_right_81920.obj"
-CIVET_SURFACE_RSL_MID_LEFT_SUFFIX="_mid_surface_rsl_left_81920.obj"
-CIVET_SURFACE_RSL_MID_RIGHT_SUFFIX="_mid_surface_rsl_right_81920.obj"
-#
-CIVET_SURFACE_WHITE_LEFT_SUFFIX="_white_surface_left_81920.obj"
-CIVET_SURFACE_WHITE_RIGHT_SUFFIX="_white_surface_right_81920.obj"
-CIVET_SURFACE_RSL_WHITE_LEFT_SUFFIX="_white_surface_rsl_left_81920.obj"
-CIVET_SURFACE_RSL_WHITE_RIGHT_SUFFIX="_white_surface_rsl_right_81920.obj"
-#
-# classify subdir
-CIVET_CLASSIFY_DIR="classify"
-CIVET_PVE_GRAY_VOLUME_SUFFIX="_pve_gm.mnc"
-CIVET_PVE_WHITE_VOLUME_SUFFIX="_pve_wm.mnc"
-CIVET_PVE_CSF_VOLUME_SUFFIX="_pve_csf.mnc"
-CIVET_CLASSIFY_DISCRETE_VOLUME_SUFFIX="_pve_classify.mnc"
-#
-# native thickness values subdir
-CIVET_THICKNESS_DIR="thickness"
-CIVET_THICKNESS_VALUES_NORSL_LEFT_SUFFIX="_native_rms_tlink_20mm_left.txt"
-CIVET_THICKNESS_VALUES_NORSL_RIGHT_SUFFIX="_native_rms_tlink_20mm_right.txt"
-CIVET_THICKNESS_VALUES_RSL_LEFT_SUFFIX="_native_rms_rsl_tlink_20mm_left.txt"
-CIVET_THICKNESS_VALUES_RSL_RIGHT_SUFFIX="_native_rms_rsl_tlink_20mm_right.txt"
-
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 # PiB-related options (Use absolute paths only)
 # 
-# ... where might I find the PiB native scan volumes?
-PIB_ECAT_DIR="/home/jnikelski/localData/JNLab/pib"
 #
 # display thresholds for mincthumbs
 # ... note that I'm using a rather higher ceiling, since the upper part
@@ -146,8 +109,6 @@ PIB_CEREB_THOLD_PCT="75.0"
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 # FDG-related options (Use absolute paths only)
 # 
-# ... where might I find the FDG native scan volumes?
-FDG_NATIVE_DIR="/home/jnikelski/localData/JNLab/fdg"
 #
 # values are displayed as 
 # % decreases relative to the cerebellum
@@ -209,7 +170,7 @@ THICKNESS_ZSCORE_THRESHOLD="-2.33"
 #
 # VBM Model and Template options (Use absolute paths only)
 # ... define model containing the averaged gm/wm  volumes
-ELDERLY_MODEL_DIR="/data/raid01/hclabEnv/models/model_ldiAdni200"
+ELDERLY_MODEL_DIR="/localData/hclabEnv/models/model_ldiAdni200"
 ELDERLY_MODEL_NAME_ROOT="ldiAdni200"
 ELDERLY_MODEL_NUMBER_OF_SUBJECTS="200"
 #
@@ -230,7 +191,7 @@ ELDERLY_MODEL_CLASSIFY_DISCRETE_VOLUME="ldiAdni200_classify.mnc"
 
 
 #
-ADNI_SURFACES_DIR="/data/raid01/hclabEnv/models/model_adni32"
+ADNI_SURFACES_DIR="/localData/hclabEnv/models/model_adni32"
 ADNI_LH_GM_SURFACE="adni32_gray_surface_left.obj"
 ADNI_RH_GM_SURFACE="adni32_gray_surface_right.obj"
 ADNI_LH_MID_SURFACE="adni32_mid_surface_left.obj"
@@ -246,7 +207,7 @@ AAL_LABELS_VERSION="AAL120"
 # file showing correspondence between label numbers and names
 AAL_LABELS_NAMES="AAL120_labels.csv"
 # location and name of label volume
-AAL_LABELS_DIR="/data/raid01/hclabEnv/models/model_ldiAdni200"
+AAL_LABELS_DIR="/localData/hclabEnv/models/model_ldiAdni200"
 #
 # ... label volume to be used for PiB/FDG quantification
 # ... this volume will be warped into the subject's linear ICBM space
@@ -256,15 +217,13 @@ AAL_LABELS_VBM_VOLUME="ldiAdni200_AALlabels_50pctBgHandicap.mnc"
 # ... label volume used for surface visualization only
 AAL_LABELS_SURFACE_VIZ_VOLUME="ldiAdni200_AALlabels_99pctBgHandicap.mnc"
 
-   # define some useful file/path stuff
-
 
 
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 # Color map-related options (Use absolute paths only)
 #
-COLORMAP_DIR="/data/raid01/hclabEnv/color_maps"
+COLORMAP_DIR="/localData/hclabEnv/color_maps"
 AAL_COLORMAP="lookupMap_hclab_AAL120_0_127_v01.ccd"
 
 
@@ -273,7 +232,7 @@ AAL_COLORMAP="lookupMap_hclab_AAL120_0_127_v01.ccd"
 # Sun Grid Engine (SGE) options (Use absolute paths only)
 #
 # ... where to find the driver scripts?
-SCRIPT_DIR="/data/raid01/software/beagle/beagle_14.04.16"
+SCRIPT_DIR="/localApps/beagle/beagle_16.03.10"
 #SCRIPT_DIR="/home/jnikelski/devel/beagle-git/main"
 
 
@@ -281,7 +240,7 @@ SCRIPT_DIR="/data/raid01/software/beagle/beagle_14.04.16"
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 # Reporting-related options (Use absolute paths only)
 #
-LORIS_RESOURCE_DIR="/data/raid01/software/beagle/beagle_14.04.16/resources/"
+LORIS_RESOURCE_DIR="/localApps/beagle/beagle_16.03.10/resources/"
 #LORIS_RESOURCE_DIR="/home/jnikelski/devel/beagle-git/main/resources/"
 RNW_TEMPLATE_PIB="beagle_pib_summary_report.Rnw"
 RNW_TEMPLATE_FDG="beagle_fdg_summary_report.Rnw"

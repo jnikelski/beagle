@@ -23,9 +23,9 @@ begin
    opt.fake                = false
    opt.tmpDir              = ""          # work directory
    opt.outDir              = "."         # output directory
-   opt.civetDir            = "".to_s     # civet root directory containing all scanIds
-   opt.civetScanId         = ""          # civet subdirectory name for a given scan
-   opt.civetPrefix         = "HCLab_"    # prefix to be used for all civet-generated volume names
+   opt.keyname             = ""
+   opt.civetScanDate       = ""          # civet subdirectory name for a given scan
+   opt.settingsFile        = ""          # civet subdirectory name for a given scan
    opt.xfmToNativeMRI      = false       # transform dynamic volume to match native MRI
    opt.xfmToIcbmMRI        = false       # transform dynamic volume to match ICBM-152 MRI
    opt.logfile             = ""          # logfile
@@ -58,19 +58,19 @@ begin
          puts "** global rescale value: " + opt.rescale.to_s if opt.verbose
       end
 
-      opts.on('--civetPrefix civet_prefix', "Civet filenaming prefix") do |civetPrefix|
-         opt.civetPrefix = civetPrefix.to_s
-         puts "** Civet filenaming prefix: " + opt.civetPrefix if opt.verbose
+      opts.on('--keyname subject_keyname', "Anonymizing keyname for this subject") do |keyname|
+         opt.keyname = keyname
+         puts "** keyname: " + opt.keyname if opt.verbose
       end
 
-      opts.on('--civetDir civet_root_dir', "civet root directory containing all scanIds") do |civetD|
-         opt.civetDir = civetD.to_s << '/'
-         puts "** civetDir: " + opt.civetDir if opt.verbose
+      opts.on('--civetScanDate civet_scan_date', "Usually a scan date of format YYYYMMDD") do |civetScanDate|
+         opt.civetScanDate = civetScanDate.to_s
+         puts "** civetScanDate: " + opt.civetScanDate if opt.verbose
       end
 
-      opts.on('--civetScanId civet_scan_ID', "civet subdirectory name for a given scan") do |civetID|
-         opt.civetScanId = civetID.to_s
-         puts "** civetScanId: " + opt.civetScanId if opt.verbose
+      opts.on('--settingsFile aggregated_settings_file', "Fullpath to the aggregated settings file ") do |settingsFile|
+         opt.settingsFile = settingsFile.to_s
+         puts "** Fullpath to the aggregated settings file: " + opt.settingsFile if opt.verbose
       end
 
       opts.on('--outDir output_dir', "Output directory (default is '#{opt.outDir}')") do |outDir|
@@ -105,7 +105,31 @@ begin
       exit
    end
 
-   # INITIALIZATION
+
+
+   # * * * * *  START of input argument validation   * * * * *
+   #
+   # keyname has been entered?
+   if ( opt.keyname.empty? or opt.scanId.empty? ) then
+      puts "\n*** Error: Subject keyname is missing"
+      puts opts
+      exit
+   end
+   
+   # check for aggregated settings file, then read if all looks OK
+   if ( opt.settingsFile.empty? ) then
+      puts "\n*** Error: Missing option(s) -- Loris aggregated settings file"
+      puts opts
+      exit
+   end
+   #
+   if ( !File.exists?(opt.settingsFile) || !File.file?(opt.settingsFile) ) then
+      puts sprintf("\n!!! Error: The specified Loris aggregated settings [%s] does not exist or is unreadable.", opt.settingsFile)
+      exit
+   end
+   #
+   settings = load_beagle_aggregated_settings(opt.settingsFile, verbose=false, debug=false)
+   
 
    # make sure that the input args were specified and are valid
    dyn_vol_in = ARGV[0]
@@ -147,25 +171,18 @@ begin
    if !File.exists?(opt.tmpDir) then Dir.mkdir(opt.tmpDir) end
 
    # civet-related options have been specified?
-   if (opt.civetDir.empty? or opt.civetScanId.empty? ) then
-      puts "\n!!! Please specify both civet-related options"
-      puts opts
-      exit
-   end
-
-   # ensure that the civet directory exists (and is a directory)
-   if (!File.exists?(opt.civetDir) or !File.directory?(opt.civetDir)) then
-      puts "\n!!! Please specify a valid civet root directory"
+   if (opt.civetScanDate.empty? ) then
+      puts "\n!!! Please specify the Civet scan date"
       puts opts
       exit
    end
 
    # is the civet scan-id option reasonable?
    # ... first, append the scan-id to the civet root dir name, then check
-   opt.civetScanIdFullpath = opt.civetDir + opt.civetScanId
+   opt.civetScanIdFullpath = civet_getScanDirectoryName(opt.keyname, opt.civetScanDate, settings, opt, fullpath=true, checkExistence=true)
    if (!File.exists?(opt.civetScanIdFullpath) or !File.directory?(opt.civetScanIdFullpath)) then
       puts "\n!!! Please specify a valid civet scan-ID  sub-directory"
-      puts "--- Directory #{opt.civetScanId} seems troublesome"
+      puts "--- Directory #{civetScanIdFullpath} seems troublesome"
       puts opts
       exit
    end
@@ -181,12 +198,11 @@ begin
       puts "   **                         Verbose:    ON" if opt.verbose
       puts "   **                           Debug:    ON" if opt.debug
       puts "   **                            Fake:    ON" if opt.fake
+      puts "   **                         Keyname:    ON" if opt.keyname
       puts "   **                  xfmToNativeMRI:    ON" if opt.xfmToNativeMRI
       puts "   **                    xfmToIcbmMRI:    ON" if opt.xfmToIcbmMRI
       puts "   **   global rescale before fitting:    " + opt.rescale.to_s
-      puts "   **         Civet filenaming prefix:    " + opt.civetPrefix
-      puts "   **            Civet root directory:    " + opt.civetDir
-      puts "   **                   Civet scan ID:    " + opt.civetScanId
+      puts "   **                 Civet scan date:    " + opt.civetScanDate
       puts "   **                Output directory:    " + opt.outDir
       puts "   **             Temp work directory:    " + opt.tmpDir
       puts "\n\n"
@@ -194,13 +210,8 @@ begin
 
 
    # align dynamic volume to native MRI (**must** use NUC-corrected volume)
-   native_mri_pathname = opt.civetDir + opt.civetScanId + '/native/'
-   native_mri_volname = opt.civetPrefix + opt.civetScanId + '_t1_nuc.mnc'
-   native_mri_fullname = native_mri_pathname + native_mri_volname
-   #
-   native_mriMask_pathname = opt.civetDir + opt.civetScanId + '/mask/'
-   native_mriMask_volname = opt.civetPrefix + opt.civetScanId + '_skull_mask_native.mnc'
-   native_mriMask_fullname = native_mriMask_pathname + native_mriMask_volname
+   native_mri_fullname = civet_getFilenameNativeNUC(opt.keyname, opt.civetScanDate, settings, opt, checkExistence=true)
+   native_mriMask_fullname =  = civet_getFilenameSkullMaskNative(opt.keyname, opt.civetScanDate, settings, opt, checkExistence=true)
 
    # if we need a global rescale prior to fitting, do it now
    if ( opt.rescale != 1.0 ) then

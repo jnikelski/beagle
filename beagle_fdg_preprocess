@@ -14,6 +14,7 @@ require 'pp'
 # load external dependencies
 require 'hclab_function_library'
 require 'beagle_function_library'
+require 'beagle_civet_function_library'
 require 'beagle_logger_classes'
 
 # start of main script
@@ -35,7 +36,7 @@ begin
    opt.scanId              = ""
    opt.settingsFile        = ""
    #
-   opt.civetScanId         = ""
+   opt.civetScanDate       = ""
 
    # List of arguments.
    opts = OptionParser.new do |opts|
@@ -70,9 +71,9 @@ begin
          puts "** scan Id: " + opt.scanId if opt.verbose
       end
 
-      opts.on('--civetScanId civet_scan_id', "Usually a scan date of format YYYYMMDD") do |civetScanId|
-         opt.civetScanId = civetScanId
-         puts "** Civet scan Id: " + opt.civetScanId if opt.verbose
+      opts.on('--civetScanDate civet_scan_date', "Usually a scan date of format YYYYMMDD") do |civetScanDate|
+         opt.civetScanDate = civetScanDate
+         puts "** Civet scan date: " + opt.civetScanDate if opt.verbose
       end
 
       opts.on('--settingsFile aggregated_settings_file', "Fullpath to the aggregated settings file ") do |settingsFile|
@@ -115,17 +116,9 @@ begin
    # init associated variables
    LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
    CIVET_VERSION = settings['CIVET_VERSION']
-   CIVET_ROOT_DIR = settings['CIVET_ROOT_DIR']
-   CIVET_PREFIX = settings['CIVET_PREFIX'] + '_'
 
    # set some useful values
-   if ( settings['CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME'] == 'ON' ) then
-      civetScan_dir = opt.keyname + '-' + opt.civetScanId
-   else
-      civetScan_dir = opt.keyname
-   end
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
-   #
    fdg_dir = 'FDG-' + opt.scanId
    fdg_dir_fullPath = File.join(keyname_dir_fullPath, fdg_dir)
    fdgTmp_dir_fullPath = File.join(fdg_dir_fullPath, 'tmp')
@@ -165,7 +158,7 @@ begin
    end
 
    # civet-related options have been specified?
-   if ( opt.civetScanId.empty? ) then
+   if ( opt.civetScanDate.empty? ) then
       puts "\n*** Error: Please specify all civet-related options"
       puts opts
       exit
@@ -188,7 +181,7 @@ begin
 
 
 
-   # Step 1: Alignment to Anatomy
+   # Step 1: Alignment to Anatomy <<<<<----------------------------------------- FIX/UPDATE INPUT ARGS
    # ... Align the FDG volume to anatomy -- native and stx.
    puts "\n** Align to Anatomy ..."   if opt.verbose
    cmd = "beagle_align_to_anatomy_singleFrame -v   "
@@ -196,9 +189,11 @@ begin
    cmd << "--xfmToIcbmMRI  "
    cmd << "--minctraccOpts \'#{opt.minctraccOpts}\'  "
    cmd << '--rescale 1.05  '
-   cmd << "--civetPrefix #{CIVET_PREFIX}  "
-   cmd << "--civetDir #{CIVET_ROOT_DIR} "
-   cmd << "--civetScanId #{civetScan_dir} "
+   cmd << "--settingsFile #{opt.settingsFile}" 
+   #cmd << "--civetPrefix #{CIVET_PREFIX}  "
+   #cmd << "--civetDir #{CIVET_ROOT_DIR} "
+   #cmd << "--civetScanId #{civetScan_dir} "
+   cmd << "--civetScanDate #{civetScanDate} "
    cmd << "--outDir #{fdgTmp_dir_fullPath} "
    cmd << "--tmpDir #{fdgTmp_dir_fullPath} "
    cmd << "#{fdg_vol_in}  "

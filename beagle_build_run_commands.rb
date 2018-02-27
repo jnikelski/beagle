@@ -27,7 +27,7 @@ end
 def buildCmd_beagle_anatomical_initialization(scan_item, opt, settings, verbose=false, debug=false)
    cmd = "beagle_anatomical_initialization   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanDate #{scan_item['scanId']} "
+   cmd << "--civetscanDate #{scan_item['civetScanDate']} "
    cmd << "--settingsFile #{opt.settingsFile} "
    return cmd
 end  
@@ -39,7 +39,7 @@ end
 def buildCmd_beagle_labels_fit_AAL(scan_item, opt, settings, verbose=false, debug=false)
    cmd = "beagle_labels_fit_AAL   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanDate #{scan_item['scanId']} "
+   cmd << "--civetScanDate #{scan_item['civetScanDate']} "
    cmd << "--settingsFile #{opt.settingsFile} "
    return cmd
 end  
@@ -51,20 +51,19 @@ end
 def buildCmd_beagle_masks_generate_from_labels(scan_item, opt, settings, verbose=false, debug=false)
    cmd = "beagle_masks_generate_from_labels   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanDate #{scan_item['scanId']} "
+   cmd << "--civetScanDate #{scan_item['civetScanDate']} "
    
    # define the Loris-generated AAL labelled input volume
    aal_label_volume_suffix = '_t1_final_' + settings['AAL_LABELS_VERSION'] + 'Labels.mnc'
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], scan_item["keyname"])
    loris_labelled_volname = scan_item["keyname"] + aal_label_volume_suffix
-   aal_dir = 'AAL-' + scan_item["scanId"]
+   aal_dir = 'AAL-' + scan_item["civetScanDate"]
    loris_labelled_volname_fullPath = File.join(keyname_dir_fullPath, aal_dir, loris_labelled_volname)
    cmd << "--labelledAALvolume #{loris_labelled_volname_fullPath} "
    
-   # define the Civet-generated tissue classification volume
-   civet_classify_volname_fullPath = civet_getFilenameClassify(scan_item["civetScanId"], settings, opt)
+   # get the Civet-generated tissue classification volume name
+   if !civet_classify_volname_fullPath=civet_getFilenameGrayMatterPve(scan_item["keyname"], scan_item["civetScanDate"], settings, opt, checkExistence=true) then exit end
    cmd << "--classifyVolume #{civet_classify_volname_fullPath} "
-
    cmd << "--settingsFile #{opt.settingsFile} "
    return cmd
 end  
@@ -77,7 +76,7 @@ end
 def buildCmd_beagle_vbm_compute_individ_VBM(scan_item, opt, settings, verbose=false, debug=false)
    cmd = "beagle_vbm_compute_individ_VBM.Rscript   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanDate  #{scan_item['scanId']}  "
+   cmd << "--civetScanDate  #{scan_item['civetScanDate']}  "
    cmd << "--settingsFile #{opt.settingsFile} "
    return cmd
 end  
@@ -85,13 +84,13 @@ end
    
 def buildCmd_beagle_vbm_quantification(scan_item, opt, settings, verbose=false, debug=false)
    # set some required derived values
-   vbm_dir = 'VBM-' + scan_item["scanId"]
+   vbm_dir = 'VBM-' + scan_item["civetScanDate"]
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], scan_item["keyname"])
    vbm_dir_fullPath = File.join(keyname_dir_fullPath, vbm_dir)
 
    cmd = "beagle_vbm_quantification.Rscript   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanDate  #{scan_item['scanId']}  "
+   cmd << "--civetScanDate  #{scan_item['civetScanDate']}  "
    cmd << "--settingsFile #{opt.settingsFile} "
          
    # GM z-score volume
@@ -109,21 +108,19 @@ end
    
 def buildCmd_beagle_vbm_volumetric_visualization(scan_item, opt, settings, verbose=false, debug=false)
    # set some required derived values
-   vbm_dir = 'VBM-' + scan_item["scanId"]
+   vbm_dir = 'VBM-' + scan_item["civetScanDate"]
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], scan_item["keyname"])
    vbm_dir_fullPath = File.join(keyname_dir_fullPath, vbm_dir)
 
    cmd = "beagle_vbm_volumetric_visualization   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanDate  #{scan_item['scanId']}  "
+   cmd << "--civetScanDate  #{scan_item['civetScanDate']}  "
    cmd << "--settingsFile #{opt.settingsFile} "
    
    # t1 anatomical underlay volume
-   civetId_dir_fullPath = File.join(settings['CIVET_ROOT_DIR'], scan_item["civetScanId"])
-   t1Volume = settings['CIVET_PREFIX'] + "_" + scan_item["civetScanId"] + settings['CIVET_FINAL_T1_VOLUME_SUFFIX']
-   t1Volume_fullPath = File.join(civetId_dir_fullPath, 'final', t1Volume)
+   if !t1Volume_fullPath=civet_getFilenameStxT1(scan_item["keyname"], scan_item["civetScanDate"], settings, opt, checkExistence=true) then exit end
    cmd << "--t1UnderlayVol #{t1Volume_fullPath} "
-      
+   
    # GM z-score volume
    gm_zScore_volume = scan_item['keyname'] + settings['VBM_GM_ZSCORE_VOLUME_SUFFIX'] + ".mnc"
    gm_zScore_volume_fullPath = File.join(vbm_dir_fullPath, gm_zScore_volume)
@@ -136,58 +133,39 @@ def buildCmd_beagle_vbm_volumetric_visualization(scan_item, opt, settings, verbo
    return cmd
 end  
 
- 
-   
+
 #
 # Cortical Thickness
 #
 def buildCmd_beagle_thickness_compute_zscores(scan_item, opt, settings, verbose=false, debug=false)
-   # set some required derived values
-   civetScanId_fullPath = File.join(settings['CIVET_ROOT_DIR'], scan_item["civetScanId"])
-   civetScanId_thicknessDir_fullPath = File.join(civetScanId_fullPath, settings['CIVET_THICKNESS_DIR'])
    #
-   civet_thickness_values_left_suffix = settings['CIVET_THICKNESS_VALUES_RSL_LEFT_SUFFIX']
-   civet_thickness_values_right_suffix = settings['CIVET_THICKNESS_VALUES_RSL_RIGHT_SUFFIX']
-
    cmd = "beagle_thickness_compute_zscores   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanDate  #{scan_item['scanId']}  "
+   cmd << "--civetScanDate  #{scan_item['civetScanDate']}  "
    cmd << "--settingsFile #{opt.settingsFile} "
    
    # CTA input vector files (left and right hemispheres) from Civet
-   filename = settings['CIVET_PREFIX'] + '_' + scan_item["civetScanId"] + civet_thickness_values_left_suffix
-   thicknessLh_filename_fullPath = File.join(civetScanId_thicknessDir_fullPath, filename)
-   cmd << "--lhThicknessVectorFile #{thicknessLh_filename_fullPath}  "
-   
-   filename = settings['CIVET_PREFIX'] + '_' + scan_item["civetScanId"] + civet_thickness_values_right_suffix
-   thicknessRh_filename_fullPath = File.join(civetScanId_thicknessDir_fullPath, filename)
-   cmd << "--rhThicknessVectorFile #{thicknessRh_filename_fullPath}  "
+   civet_thickness_lh, civet_thickness_rh = civet_getFilenameCorticalThickness(scan_item["keyname"], scan_item["civetScanDate"], settings, opt, checkExistence=true, resampled=true)
+   cmd << "--lhThicknessVectorFile #{civet_thickness_lh}  "
+   cmd << "--rhThicknessVectorFile #{civet_thickness_rh}  "
    return cmd
 end  
 
 
 def buildCmd_beagle_thickness_extract_surface_labels(scan_item, opt, settings, verbose=false, debug=false)
-   
-   # define full civet directory name
-   civetId_dir_fullPath = File.join(settings['CIVET_ROOT_DIR'], scan_item['civetScanId'])
-   civet_surfaces_dir = File.join(civetId_dir_fullPath, 'surfaces')
-
+   #
    cmd = "beagle_thickness_extract_surface_labels   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanDate  #{scan_item['scanId']}  "
+   cmd << "--civetScanDate  #{scan_item['civetScanDate']}  "
    cmd << "--settingsFile #{opt.settingsFile} "
 
    # set surface object filenames
-   filename = settings['CIVET_PREFIX'] + '_' + scan_item['civetScanId'] + settings['CIVET_SURFACE_MID_LEFT_SUFFIX']
-   civet_surfaceLh_fullPath = File.join(civet_surfaces_dir, filename)
-   cmd << "--surfaceLh #{civet_surfaceLh_fullPath}  "
-    
-   filename = settings['CIVET_PREFIX'] + '_' + scan_item['civetScanId'] + settings['CIVET_SURFACE_MID_RIGHT_SUFFIX']
-   civet_surfaceRh_fullPath = File.join(civet_surfaces_dir, filename)
-   cmd << "--surfaceRh #{civet_surfaceRh_fullPath}  "
+   civet_surfaceLh, civet_surfaceRh = civet_getFilenameMidSurfaces(scan_item["keyname"], scan_item['civetScanDate'], settings, opt, checkExistence=true, resampled=false)
+   cmd << "--surfaceLh #{civet_surfaceLh}  "
+   cmd << "--surfaceRh #{civet_surfaceRh}  "
    
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], scan_item['keyname'])
-   aal_dir = 'AAL-' + scan_item['scanId']
+   aal_dir = 'AAL-' + scan_item['civetScanDate']
    aal_dir_fullPath = File.join(keyname_dir_fullPath, aal_dir)
    #
    aal_labelled_volume_suffix = "_t1_final_" + settings['AAL_LABELS_VERSION'] + "Labels_gmMask.mnc"
@@ -207,12 +185,12 @@ def buildCmd_beagle_thickness_compute_roi_statistics(scan_item, opt, settings, v
    
    # define some handy paths
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], scan_item['keyname'])
-   cta_dir = 'THICKNESS-' + scan_item['scanId']
+   cta_dir = 'THICKNESS-' + scan_item['civetScanDate']
    cta_dir_fullPath = File.join(keyname_dir_fullPath, cta_dir)
 
    cmd = "beagle_thickness_compute_roi_statistics.Rscript   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanDate  #{scan_item['scanId']}  "
+   cmd << "--civetScanDate  #{scan_item['civetScanDate']}  "
    cmd << "--settingsFile #{opt.settingsFile} "
 
    # subject's aggregated thickness vector file
@@ -240,7 +218,7 @@ def buildCmd_beagle_thickness_surface_visualization(scan_item, opt, settings, ve
    
    cmd = "beagle_thickness_surface_visualization   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanDate  #{scan_item['scanId']}  "
+   cmd << "--civetScanDate  #{scan_item['civetScanDate']}  "
    cmd << "--settingsFile #{opt.settingsFile} "
 
    cmd << "--colorMap #{color_map}  "
@@ -256,13 +234,9 @@ def buildCmd_beagle_thickness_surface_visualization(scan_item, opt, settings, ve
    cmd << "--avgRhSurface #{adni_rh_gm_surface_fullpath}  "
    
    # individual surfaces -- LH/RH
-   indivLhSurface = settings['CIVET_PREFIX'] + '_' + scan_item['civetScanId'] + settings['CIVET_SURFACE_GRAY_LEFT_SUFFIX']
-   indivLhSurface_fullPath = File.join(settings['CIVET_ROOT_DIR'], scan_item['civetScanId'], 'surfaces', indivLhSurface)
-   cmd << "--indivLhSurface #{indivLhSurface_fullPath}  "   
-   #
-   indivRhSurface = settings['CIVET_PREFIX'] + '_' + scan_item['civetScanId'] + settings['CIVET_SURFACE_GRAY_RIGHT_SUFFIX']
-   indivRhSurface_fullPath = File.join(settings['CIVET_ROOT_DIR'], scan_item['civetScanId'], 'surfaces', indivRhSurface)
-   cmd << "--indivRhSurface #{indivRhSurface_fullPath}  "
+   individ_lh_gm_surface, individ_rh_gm_surface = civet_getFilenameGrayMatterSurfaces(scan_item["keyname"], scan_item['civetScanDate'], settings, opt, checkExistence=true, resampled=false)
+   cmd << "--indivLhSurface #{individ_lh_gm_surface}  "   
+   cmd << "--indivRhSurface #{individ_rh_gm_surface}  "
 
    return cmd
 end  
@@ -274,8 +248,8 @@ end
 def buildCmd_beagle_pib_initialization(scan_item, opt, settings, verbose=false, debug=false)
    cmd = "beagle_pib_initialization   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanId #{scan_item['scanId']} "
-   cmd << "--civetScanId #{scan_item['civetScanId']} "
+   cmd << "--scanDate #{scan_item['scanDate']} "
+   cmd << "--civetScanDate #{scan_item['civetScanDate']} "
    cmd << "--settingsFile #{opt.settingsFile} "
    return cmd
 end  
@@ -284,8 +258,8 @@ end
 def buildCmd_beagle_pib_convert_ecat2mnc(scan_item, opt, settings, verbose=false, debug=false)
    cmd = "beagle_pib_convert_ecat2mnc   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanId #{scan_item['scanId']} "
-   cmd << "--civetScanId #{scan_item['civetScanId']} "
+   cmd << "--scanDate #{scan_item['scanDate']} "
+   cmd << "--civetScanDate #{scan_item['civetScanDate']} "
    cmd << "--settingsFile #{opt.settingsFile} "
    
    # fullpath to input ecat file
@@ -299,12 +273,12 @@ def buildCmd_beagle_pib_preprocess(scan_item, opt, settings, verbose=false, debu
    cmd = "beagle_pib_preprocess   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--xfmToNativeMRI  --xfmToIcbmMRI  "
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanId #{scan_item['scanId']} "
-   cmd << "--civetScanId #{scan_item['civetScanId']} "
+   cmd << "--scanDate #{scan_item['scanDate']} "
+   cmd << "--civetScanDate #{scan_item['civetScanDate']} "
    cmd << "--settingsFile #{opt.settingsFile} "
    
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], scan_item['keyname'])
-   pib_dir = 'PiB-' + scan_item['scanId']
+   pib_dir = 'PiB-' + scan_item['scanDate']
    pib_dir_fullPath = File.join(keyname_dir_fullPath, pib_dir)
    pibNative_dir_fullPath = File.join(pib_dir_fullPath, 'native')
    #
@@ -318,8 +292,8 @@ end
 def buildCmd_beagle_pib_generate_masks(scan_item, opt, settings, verbose=false, debug=false)
    cmd = "beagle_pib_generate_masks   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanId #{scan_item['scanId']} "
-   cmd << "--civetScanId #{scan_item['civetScanId']} "
+   cmd << "--scanDate #{scan_item['scanDate']} "
+   cmd << "--civetScanDate #{scan_item['civetScanDate']} "
    cmd << "--settingsFile #{opt.settingsFile} "
    return cmd
 end  
@@ -328,8 +302,8 @@ end
 def buildCmd_beagle_pib_preprocess_verification(scan_item, opt, settings, verbose=false, debug=false)
    cmd = "beagle_pib_preprocess_verification   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanId #{scan_item['scanId']} "
-   cmd << "--civetScanId #{scan_item['civetScanId']} "
+   cmd << "--scanDate #{scan_item['scanDate']} "
+   cmd << "--civetScanDate #{scan_item['civetScanDate']} "
    cmd << "--settingsFile #{opt.settingsFile} "
    return cmd
 end  
@@ -338,8 +312,8 @@ end
 def buildCmd_beagle_pib_compute_ratios(scan_item, opt, settings, verbose=false, debug=false)
    cmd = "beagle_pib_compute_ratios.Rscript   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanId #{scan_item['scanId']} "
-   cmd << "--civetScanId #{scan_item['civetScanId']} "
+   cmd << "--scanDate #{scan_item['scanDate']} "
+   cmd << "--civetScanDate #{scan_item['civetScanDate']} "
    cmd << "--settingsFile #{opt.settingsFile} "
    return cmd
 end  
@@ -348,8 +322,8 @@ end
 def buildCmd_beagle_pib_compute_SUVR(scan_item, opt, settings, verbose=false, debug=false)
    cmd = "beagle_pib_compute_SUVR.Rscript    ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanId #{scan_item['scanId']} "
-   cmd << "--civetScanId #{scan_item['civetScanId']} "
+   cmd << "--scanDate #{scan_item['scanDate']} "
+   cmd << "--civetScanDate #{scan_item['civetScanDate']} "
    cmd << "--settingsFile #{opt.settingsFile} "
    return cmd
 end  
@@ -358,25 +332,19 @@ end
 def buildCmd_beagle_pib_volumetric_visualization(scan_item, opt, settings, verbose=false, debug=false)
    cmd = "beagle_pib_volumetric_visualization   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanId #{scan_item['scanId']} "
-   cmd << "--civetScanId #{scan_item['civetScanId']} "
+   cmd << "--scanDate #{scan_item['scanDate']} "
+   cmd << "--civetScanDate #{scan_item['civetScanDate']} "
    cmd << "--settingsFile #{opt.settingsFile} "
    
    # gray matter mask volume
    derived_gm_mask_volume = 'wholeBrain_gray_matter_mask.mnc'
-   masks_dir = 'MASKS-' + scan_item['scanId']
+   masks_dir = 'MASKS-' + scan_item['civetScanDate']
    masks_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], scan_item['keyname'], masks_dir)
    gmMaskVol_fullPath = File.join(masks_dir_fullPath, derived_gm_mask_volume)
    cmd << "--gmMaskVol #{gmMaskVol_fullPath} "                 
    
    # t1 anatomical underlay volume
-   if ( settings['CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME'] == 'ON' ) then
-      civetScanDirname = scan_item['keyname'] + '-' + scan_item['civetScanId']
-   else
-      civetScanDirname = scan_item['keyname']
-   end
-   t1Volume = settings['CIVET_PREFIX'] + '_' + civetScanDirname + settings['CIVET_FINAL_T1_VOLUME_SUFFIX']
-   t1Volume_fullPath = File.join(settings['CIVET_ROOT_DIR'], civetScanDirname, 'final', t1Volume)
+   if !t1Volume_fullPath = civet_getFilenameStxT1(scan_item['keyname'], scan_item['civetScanDate'], settings, opt, checkExistence=true) then exit end
    cmd << "--t1UnderlayVol #{t1Volume_fullPath} "
    return cmd
 end  
@@ -385,8 +353,8 @@ end
 def buildCmd_beagle_pib_surface_visualization(scan_item, opt, settings, verbose=false, debug=false)
    cmd = "beagle_pib_surface_visualization   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanId #{scan_item['scanId']} "
-   cmd << "--civetScanId #{scan_item['civetScanId']} "
+   cmd << "--scanDate #{scan_item['scanDate']} "
+   cmd << "--civetScanDate #{scan_item['civetScanDate']} "
    cmd << "--settingsFile #{opt.settingsFile} "
 
    # color map to use in rendering
@@ -403,21 +371,10 @@ def buildCmd_beagle_pib_surface_visualization(scan_item, opt, settings, verbose=
    adni_rh_gm_surface_fullpath = File.join(adni_surfaces_dir, adni_rh_gm_surface)
    cmd << "--avgRhSurface #{adni_rh_gm_surface_fullpath}  "
 
-   # set Civet subject scan subdir name 
-   if ( settings['CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME'] == 'ON' ) then
-      civetScanDirname = scan_item['keyname'] + '-' + scan_item['civetScanId']
-   else
-      civetScanDirname = scan_item['keyname']
-   end
-
    # individual surfaces -- LH/RH
-   indivLhSurface = settings['CIVET_PREFIX'] + '_' + civetScanDirname + settings['CIVET_SURFACE_GRAY_LEFT_SUFFIX']
-   indivLhSurface_fullPath = File.join(settings['CIVET_ROOT_DIR'], civetScanDirname, 'surfaces', indivLhSurface)
-   cmd << "--indivLhSurface #{indivLhSurface_fullPath}  "   
-   #
-   indivRhSurface = settings['CIVET_PREFIX'] + '_' + civetScanDirname + settings['CIVET_SURFACE_GRAY_RIGHT_SUFFIX']
-   indivRhSurface_fullPath = File.join(settings['CIVET_ROOT_DIR'], civetScanDirname, 'surfaces', indivRhSurface)
-   cmd << "--indivRhSurface #{indivRhSurface_fullPath}  "
+   indivLhSurface, indivRhSurface = civet_getFilenameGrayMatterSurfaces(scan_item['keyname'], scan_item['civetScanDate'], settings, opt, checkExistence=true, resampled=false)
+   cmd << "--indivLhSurface #{indivLhSurface}  "   
+   cmd << "--indivRhSurface #{indivRhSurface}  "
    return cmd
 end  
 
@@ -429,8 +386,8 @@ end
 def buildCmd_beagle_fdg_initialization(scan_item, opt, settings, verbose=false, debug=false)
    cmd = "beagle_fdg_initialization   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanId #{scan_item['scanId']} "
-   cmd << "--civetScanId #{scan_item['civetScanId']} "
+   cmd << "--scanDate #{scan_item['scanDate']} "
+   cmd << "--civetScanDate #{scan_item['civetScanDate']} "
    cmd << "--settingsFile #{opt.settingsFile} "
    return cmd
 end  
@@ -440,7 +397,7 @@ def buildCmd_beagle_fdg_convert_native2mnc(scan_item, opt, settings, verbose=fal
 
    cmd = "beagle_fdg_convert_native2mnc   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanId #{scan_item['scanId']} "
+   cmd << "--scanDate #{scan_item['scanDate']} "
    cmd << "--settingsFile #{opt.settingsFile} "
 
    # set the native volume format switch ("--ecat", "--dicom", or more recently, "--minc")
@@ -454,9 +411,10 @@ def buildCmd_beagle_fdg_convert_native2mnc(scan_item, opt, settings, verbose=fal
    end
    
    # (2) if dicom --> full path the dicom root subdirectory
-   #     Note: the Dicom root must located within a "scanId" subdirectory (eg., ../fdg/aeneus-20091117/Dicom-PET/.. 
+   #     Note: the Dicom root must located within a "scanDate" subdirectory (eg., ../fdg/aeneus-20091117/Dicom-PET/.. 
    if ( cmdSwitch == "dicom" ) then
-      native_fdg_dirname_fullPath = File.join(settings['FDG_NATIVE_DIR'], scan_item['scanId'])
+      scanDirectoryName = scan_item['keyname'] + scan_item['scanDate']
+      native_fdg_dirname_fullPath = File.join(settings['FDG_NATIVE_DIR'], scan_item['scanDirectoryName'])
       native_target_fullPath = File.join(native_fdg_dirname_fullPath, scan_item["scanFileLocation"])
    end
    cmd << "--inputTarget=#{native_target_fullPath} "
@@ -468,12 +426,12 @@ def buildCmd_beagle_fdg_preprocess(scan_item, opt, settings, verbose=false, debu
    cmd = "beagle_fdg_preprocess   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--xfmToNativeMRI  --xfmToIcbmMRI  "
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanId #{scan_item['scanId']} "
-   cmd << "--civetScanId #{scan_item['civetScanId']} "
+   cmd << "--scanDate #{scan_item['scanDate']} "
+   cmd << "--civetScanDate #{scan_item['civetScanDate']} "
    cmd << "--settingsFile #{opt.settingsFile} "
    
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], scan_item['keyname'])
-   fdg_dir = 'FDG-' + scan_item['scanId']
+   fdg_dir = 'FDG-' + scan_item['scanDate']
    fdg_dir_fullPath = File.join(keyname_dir_fullPath, fdg_dir)
    fdgNative_dir_fullPath = File.join(fdg_dir_fullPath, 'native')
    #
@@ -487,8 +445,8 @@ end
 def buildCmd_beagle_fdg_preprocess_verification(scan_item, opt, settings, verbose=false, debug=false)
    cmd = "beagle_fdg_preprocess_verification   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanId #{scan_item['scanId']} "
-   cmd << "--civetScanId #{scan_item['civetScanId']} "
+   cmd << "--scanDate #{scan_item['scanDate']} "
+   cmd << "--civetScanDate #{scan_item['civetScanDate']} "
    cmd << "--settingsFile #{opt.settingsFile} "
    return cmd
 end  
@@ -497,8 +455,8 @@ end
 def buildCmd_beagle_fdg_compute_ratios(scan_item, opt, settings, verbose=false, debug=false)
    cmd = "beagle_fdg_compute_ratios.Rscript   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanId #{scan_item['scanId']} "
-   cmd << "--civetScanId #{scan_item['civetScanId']} "
+   cmd << "--scanDate #{scan_item['scanDate']} "
+   cmd << "--civetScanDate #{scan_item['civetScanDate']} "
    cmd << "--settingsFile #{opt.settingsFile} "
    return cmd
 end  
@@ -508,8 +466,8 @@ def buildCmd_beagle_fdg_compute_SUVR(scan_item, opt, settings, verbose=false, de
 
    cmd = "beagle_fdg_compute_SUVR.Rscript   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanId #{scan_item['scanId']} "
-   cmd << "--civetScanId #{scan_item['civetScanId']} "
+   cmd << "--scanDate #{scan_item['scanDate']} "
+   cmd << "--civetScanDate #{scan_item['civetScanDate']} "
    cmd << "--settingsFile #{opt.settingsFile} "
    return cmd
 end  
@@ -518,25 +476,19 @@ end
 def buildCmd_beagle_fdg_volumetric_visualization(scan_item, opt, settings, verbose=false, debug=false)
    cmd = "beagle_fdg_volumetric_visualization   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanId #{scan_item['scanId']} "
-   cmd << "--civetScanId #{scan_item['civetScanId']} "
+   cmd << "--scanDate #{scan_item['scanDate']} "
+   cmd << "--civetScanDate #{scan_item['civetScanDate']} "
    cmd << "--settingsFile #{opt.settingsFile} "
    
    # gray matter mask volume
    derived_gm_mask_volume = 'wholeBrain_gray_matter_mask.mnc'
-   masks_dir = 'MASKS-' + scan_item['civetScanId']
+   masks_dir = 'MASKS-' + scan_item['civetScanDate']
    masks_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], scan_item['keyname'], masks_dir)
    gmMaskVol_fullPath = File.join(masks_dir_fullPath, derived_gm_mask_volume)
    cmd << "--gmMaskVol #{gmMaskVol_fullPath} "                 
    
    # t1 anatomical underlay volume
-   if ( settings['CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME'] == 'ON' ) then
-      civetScanDirname = scan_item['keyname'] + '-' + scan_item['civetScanId']  
-   else
-      civetScanDirname = scan_item['keyname']
-   end
-   t1Volume = settings['CIVET_PREFIX'] + '_' + civetScanDirname + settings['CIVET_FINAL_T1_VOLUME_SUFFIX']
-   t1Volume_fullPath = File.join(settings['CIVET_ROOT_DIR'], civetScanDirname, 'final', t1Volume)
+   if !t1Volume_fullPath = civet_getFilenameStxT1(scan_item['keyname'], scan_item['civetScanDate'], settings, opt, checkExistence=true) then exit end
    cmd << "--t1UnderlayVol #{t1Volume_fullPath} "
    return cmd
 end  
@@ -545,8 +497,8 @@ end
 def buildCmd_beagle_fdg_surface_visualization(scan_item, opt, settings, verbose=false, debug=false)
    cmd = "beagle_fdg_surface_visualization   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--scanId #{scan_item['scanId']} "
-   cmd << "--civetScanId #{scan_item['civetScanId']} "
+   cmd << "--scanDate #{scan_item['scanDate']} "
+   cmd << "--civetScanDate #{scan_item['civetScanDate']} "
    cmd << "--settingsFile #{opt.settingsFile} "
    
    # probability map volume(s) used for visualization masking
@@ -568,22 +520,11 @@ def buildCmd_beagle_fdg_surface_visualization(scan_item, opt, settings, verbose=
    adni_rh_gm_surface = settings['ADNI_RH_GM_SURFACE']
    adni_rh_gm_surface_fullpath = File.join(adni_surfaces_dir, adni_rh_gm_surface)
    cmd << "--avgRhSurface #{adni_rh_gm_surface_fullpath}  "
-   
-   # set Civet subject scan subdir name 
-   if ( settings['CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME'] == 'ON' ) then
-      civetScanDirname = scan_item['keyname'] + '-' + scan_item['civetScanId']
-   else
-      civetScanDirname = scan_item['keyname']
-   end
 
    # individual surfaces -- LH/RH
-   indivLhSurface = settings['CIVET_PREFIX'] + '_' + civetScanDirname + settings['CIVET_SURFACE_GRAY_LEFT_SUFFIX']
-   indivLhSurface_fullPath = File.join(settings['CIVET_ROOT_DIR'], civetScanDirname, 'surfaces', indivLhSurface)
-   cmd << "--indivLhSurface #{indivLhSurface_fullPath}  "   
-   #
-   indivRhSurface = settings['CIVET_PREFIX'] + '_' + civetScanDirname + settings['CIVET_SURFACE_GRAY_RIGHT_SUFFIX']
-   indivRhSurface_fullPath = File.join(settings['CIVET_ROOT_DIR'], civetScanDirname, 'surfaces', indivRhSurface)
-   cmd << "--indivRhSurface #{indivRhSurface_fullPath}  "
+   indivLhSurface, indivRhSurface = civet_getFilenameGrayMatterSurfaces(scan_item['keyname'], scan_item['civetScanDate'], settings, opt, checkExistence=true, resampled=true)
+   cmd << "--indivLhSurface #{indivLhSurface}  "   
+   cmd << "--indivRhSurface #{indivRhSurface}  "
    return cmd
 end  
 

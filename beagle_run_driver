@@ -207,6 +207,7 @@ begin
       # loop over all Civet entries for this subject 
       # ... keyname must be passed as an array
       scans = civet_subj_details.select_entries_by_keyname([keyname])
+      puts "- - - - - - - - - -"
       pp scans if opt.debug
       
       # we must have at least one entry, else error
@@ -255,7 +256,7 @@ begin
       #
       # load all subject entries from the PiB config file
       puts "Processing PiB file #{settings['PIB_SUBJECT_INFO']}" if opt.verbose
-      pib_subj_details = PiBSubjectDetails.new(settings['PIB_SUBJECT_INFO'], opt)
+      pib_subj_details = PiBSubjectDetails.new(settings['PIB_SUBJECT_INFO'], opt, settings)
       pp(pib_subj_details) if opt.debug
       
       # loop over all PiB entries for this subject 
@@ -294,7 +295,7 @@ begin
       #
       # load all subject entries from the FDG config file
       puts "Processing FDG file #{settings['FDG_SUBJECT_INFO']}"
-      fdg_subj_details = FdgSubjectDetails.new(settings['FDG_SUBJECT_INFO'], opt)
+      fdg_subj_details = FdgSubjectDetails.new(settings['FDG_SUBJECT_INFO'], opt, settings)
       pp(fdg_subj_details) if opt.debug
       
       # loop over all Civet entries for this subject 

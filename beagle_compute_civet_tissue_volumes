@@ -62,6 +62,11 @@ begin
          puts "** Civet prefix: " + opt.civetPrefix if opt.verbose
       end
 
+      opts.on('--tmpDir working_directory', "Temporary working directory; default is Dir::tmpdir)") do |tmpDir|
+        opt.tmpDir = tmpDir.to_s
+        puts "** Temp directory: " + opt.tmpDir if opt.verbose
+     end
+
       opts.on_tail("-h", "--help", "Show this very helpful help message") do
          puts opts
          exit
@@ -104,7 +109,7 @@ begin
 
    # create a tmpdir that we can clean up after we're done
    if ( opt.tmpDir.empty? ) then opt.tmpDir = Dir::tmpdir end
-   tmpSubDir = 'hclab_compute_civet_tissue_volumes_' + Process.pid.to_s
+   tmpSubDir = 'beagle_compute_civet_tissue_volumes_' + Process.pid.to_s
    opt.tmpDir = File.join(opt.tmpDir, tmpSubDir)
    FileUtils.mkdir_p(opt.tmpDir)
 
@@ -148,7 +153,7 @@ begin
 
       # skip over if testing
       subdirCtr = subdirCtr +1
-      #if ( subdirCtr > 1 ) then next end
+      if ( subdirCtr > 1 ) then next end
       #if ( keyname != "0002-M-NC" ) then next end
       puts "Processing -- " + keyname
 
@@ -159,7 +164,7 @@ begin
       # first, let's break apart the classify volume (as separate masks)
       #
       # set classify volume name
-      classify_volname = civetPrefix + keyname + '_classify.mnc'
+      classify_volname = civetPrefix + keyname + '_pve_classify.mnc'
       classify_volname_fullpath = File.join(keyname_fullPath, 'classify', classify_volname)
       
       # (1) break out the GM

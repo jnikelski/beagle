@@ -28,7 +28,7 @@ begin
    opt.debug               = false
    opt.keyname             = ""
    opt.scanId              = ""
-   opt.civetScanId         = ""
+   opt.civetScanDate       = ""
    opt.settingsFile        = ""
 
    # List of arguments.
@@ -51,9 +51,9 @@ begin
          puts "** scan Id: " + opt.scanId if opt.verbose
       end
 
-      opts.on('--civetScanId civet_scan_id', "Usually a scan date of format YYYYMMDD") do |civetScanId|
-         opt.civetScanId = civetScanId
-         puts "** Civet scan Id: " + opt.civetScanId if opt.verbose
+      opts.on('--civetScanDate civet_scan_date', "Usually a scan date of format YYYYMMDD") do |civetScanDate|
+         opt.civetScanDate = civetScanDate
+         puts "** Civet scan date: " + opt.civetScanDate if opt.verbose
       end
 
       opts.on('--settingsFile aggregated_settings_file', "Fullpath to the aggregated settings file ") do |settingsFile|
@@ -96,36 +96,15 @@ begin
    # init associated variables
    LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
    CIVET_VERSION = settings['CIVET_VERSION']
-   CIVET_ROOT_DIR = settings['CIVET_ROOT_DIR']
    
-   CIVET_PREFIX = settings['CIVET_PREFIX'] + '_'
-   CIVET_FINAL_T1_VOLUME_SUFFIX = settings['CIVET_FINAL_T1_VOLUME_SUFFIX']
-   CIVET_SURFACE_GRAY_LEFT_SUFFIX = settings['CIVET_SURFACE_GRAY_LEFT_SUFFIX']
-   CIVET_SURFACE_GRAY_RIGHT_SUFFIX = settings['CIVET_SURFACE_GRAY_RIGHT_SUFFIX']
-
-
 
    # set some useful values
-   #
-   # are we going to use scan date to access the Civet output files/directories?
-   if ( settings['CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME'] == 'ON' ) then
-    civetScan_dir = opt.keyname + '-' + opt.civetScanId
- else
-    civetScan_dir = opt.keyname
- end
- 
- keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
- fdgScan_dir = 'FDG-' + opt.scanId
+   keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
+   fdgScan_dir = 'FDG-' + opt.scanId
 
 
-   # check Civet ID directory ... just make sure it's there, and then
-   # ... create sub-directories, as required
-   civetId_dir_fullPath = File.join(CIVET_ROOT_DIR, civetScan_dir)
-   if ( !File.exists?(civetId_dir_fullPath) || !File.directory?(civetId_dir_fullPath) ) then
-      puts sprintf("\n!!! Error: Civet validation error for scan %s", opt.civetScanId)
-      puts sprintf("Civet ID subdirectory [%s] does not exist", civetId_dir_fullPath)
-      exit
-   end
+   # check Civet ID directory ... just make sure it's there
+   civetId_dir_fullPath = civet_getScanDirectoryName(opt.keyname, opt.civetScanDate, settings, opt, fullpath=true, checkExistence=true)
 
 
    # load subject's master logfile; write a start message
@@ -145,7 +124,8 @@ begin
       Dir.mkdir(fdgScan_dir_fullPath)
    end
    # write ID of associated anatomical scan into the directory
-   File.open(File.join(fdgScan_dir_fullPath,'civet_scan_id.txt'), 'w') {|f| f.write("#{opt.civetScanId}\n");f.close}
+   civetScanDirectoryName = civet_getScanDirectoryName(opt.keyname, opt.civetScanDate, settings, opt, fullpath=false, checkExistence=false)
+   File.open(File.join(fdgScan_dir_fullPath,'civet_scan_id.txt'), 'w') {|f| f.write("#{civetScanDirectoryName}\n");f.close}
 
    # create subdirs
    filename = File.join(fdgScan_dir_fullPath, "native")
