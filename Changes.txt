@@ -1,3 +1,15 @@
+beagle_3.0.0
+* decided to move over to semVer versioning
+* Mostly Civet-related refactoring
+* created a new middle-ware API for accessing Civet files and directories
+* implemented the Civet-access API in Ruby
+* changed all Ruby scripts to use the new Civet-access API
+* changed all R scripts to use the new Civet-access API, although the actual R implementation is in rmincIO
+* modified script args to no longer use *scanId*, instead use the more descriptive *scanDate* (for functional scans) and *civetScanDate*
+* lots of housekeeping -- such as, removing unused code, changing the settings file, etc
+* change the code to work with Ruby > 1.9 (tested with 2.4.1)
+* use Ruby >2.0 functionality to implement named parameters in the Civet accessor functions
+
 beagle_16.03.10
  * changed hashbang in Rscripts to execute out of /opt/R/ facilitating multiple R versions 
  * ... by changing the symbolic link in the setup script
