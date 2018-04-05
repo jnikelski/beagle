@@ -33,7 +33,7 @@ begin
    #                                            #    -mi, -nmi, -xcorr
    #
    opt.keyname             = ""
-   opt.scanId              = ""
+   opt.scanDate            = ""
    opt.settingsFile        = ""
    #
    opt.civetScanDate       = ""
@@ -66,9 +66,9 @@ begin
          puts "** keyname: " + opt.keyname if opt.verbose
       end
 
-      opts.on('--scanId fdg_scan_id', "Usually a scan date of format YYYYMMDD") do |scanId|
-         opt.scanId = scanId
-         puts "** scan Id: " + opt.scanId if opt.verbose
+      opts.on('--scanDate fdg_scan_date', "Usually a scan date of format YYYYMMDD") do |scanDate|
+         opt.scanDate = scanDate
+         puts "** scan date: " + opt.scanDate if opt.verbose
       end
 
       opts.on('--civetScanDate civet_scan_date', "Usually a scan date of format YYYYMMDD") do |civetScanDate|
@@ -111,7 +111,7 @@ begin
       exit
    end
    #
-   settings = load_beagle_aggregated_settings(opt.settingsFile, verbose=false, debug=false)
+   settings = load_beagle_aggregated_settings(opt.settingsFile, verbose=opt.verbose, debug=opt.debug)
 
    # init associated variables
    LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
@@ -119,7 +119,7 @@ begin
 
    # set some useful values
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
-   fdg_dir = 'FDG-' + opt.scanId
+   fdg_dir = 'FDG-' + opt.scanDate
    fdg_dir_fullPath = File.join(keyname_dir_fullPath, fdg_dir)
    fdgTmp_dir_fullPath = File.join(fdg_dir_fullPath, 'tmp')
    fdgLogs_dir_fullPath = File.join(fdg_dir_fullPath, 'logs')
@@ -132,7 +132,7 @@ begin
    # * * * * *  START of input argument validation   * * * * *
    #
    # keyname has been entered?
-   if ( opt.keyname.empty? or opt.scanId.empty? ) then
+   if ( opt.keyname.empty? or opt.scanDate.empty? ) then
       puts "\n*** Error: Subject keyname OR PiB scan date is missing"
       puts opts
       exit
@@ -159,7 +159,7 @@ begin
 
    # civet-related options have been specified?
    if ( opt.civetScanDate.empty? ) then
-      puts "\n*** Error: Please specify all civet-related options"
+      puts "\n*** Error: Please specify all Civet-related options"
       puts opts
       exit
    end
@@ -172,8 +172,8 @@ begin
    # load subject's master logfile; write a start message
    progname = 'beagle_fdg_preprocess'
    logger = BeagleLogger.new(opt.keyname, settings, eraseLog=false)
-   logger.log_start_message(progname, opt.keyname, 'FDG', opt.scanId)
-   logger.log_message(progname, opt.keyname, 'FDG', opt.scanId, 'civet_version', CIVET_VERSION)
+   logger.log_start_message(progname, opt.keyname, 'FDG', opt.scanDate)
+   logger.log_message(progname, opt.keyname, 'FDG', opt.scanDate, 'civet_version', CIVET_VERSION)
 
    # now that we've verified that we have a /logs subdir,
    # ... set processing status to "running"
@@ -189,11 +189,9 @@ begin
    cmd << "--xfmToIcbmMRI  "
    cmd << "--minctraccOpts \'#{opt.minctraccOpts}\'  "
    cmd << '--rescale 1.05  '
-   cmd << "--settingsFile #{opt.settingsFile}" 
-   #cmd << "--civetPrefix #{CIVET_PREFIX}  "
-   #cmd << "--civetDir #{CIVET_ROOT_DIR} "
-   #cmd << "--civetScanId #{civetScan_dir} "
-   cmd << "--civetScanDate #{civetScanDate} "
+   cmd << "--settingsFile #{opt.settingsFile} " 
+   cmd << "--keyname #{opt.keyname} "
+   cmd << "--civetScanDate #{opt.civetScanDate} "
    cmd << "--outDir #{fdgTmp_dir_fullPath} "
    cmd << "--tmpDir #{fdgTmp_dir_fullPath} "
    cmd << "#{fdg_vol_in}  "
@@ -252,7 +250,7 @@ begin
    set_job_status(fdgLogs_dir_fullPath, "beagle_fdg_preprocess_JobStatus", "finished")
 
    # log a 'done' message to the subject's master logfile, and then write out logfile
-   logger.log_stop_message(progname, opt.keyname, 'FDG', opt.scanId)
+   logger.log_stop_message(progname, opt.keyname, 'FDG', opt.scanDate)
    logger.save_to_file()
 
 rescue RuntimeError => e

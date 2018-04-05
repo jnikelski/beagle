@@ -16,6 +16,8 @@ require 'fileutils'
 require 'tmpdir'            # needed for Dir::tmpdir
 
 # these libs are pointed to by the RUBYLIB env variable
+require 'beagle_function_library'
+require 'beagle_civet_function_library'
 require 'hclab_function_library'
 
 # start of main script
@@ -26,9 +28,9 @@ begin
    opt.fake                = false
    opt.tmpDir              = ""          # work directory
    opt.outDir              = "."         # output directory
-   opt.civetDir            = "".to_s     # civet root directory containing all scanIds
-   opt.civetScanId         = ""          # civet subdirectory name for a given scan
-   opt.civetPrefix         = "HCLab_"    # prefix to be used for all civet-generated volume names
+   opt.keyname             = ""
+   opt.civetScanDate       = ""          # civet scan identifier (usually a date) for a given scan
+   opt.settingsFile        = ""          # Beagle settings file
    opt.xfmToNativeMRI      = false       # transform dynamic volume to match native MRI
    opt.xfmToIcbmMRI        = false       # transform dynamic volume to match ICBM-152 MRI
    opt.minctraccOpts       = "-lsq6  -mi "     # options passed through to minctracc
@@ -55,19 +57,19 @@ begin
          puts "** minctracc options: " + opt.minctraccOpts if opt.verbose
       end
 
-      opts.on('--civetPrefix civet_prefix', "Civet filenaming prefix") do |civetPrefix|
-         opt.civetPrefix = civetPrefix.to_s
-         puts "** Civet filenaming prefix: " + opt.civetPrefix if opt.verbose
+      opts.on('--keyname subject_keyname', "Anonymizing keyname for this subject") do |keyname|
+         opt.keyname = keyname
+         puts "** keyname: " + opt.keyname if opt.verbose
       end
 
-      opts.on('--civetDir civet_root_dir', "civet root directory containing all scanIds") do |civetD|
-         opt.civetDir = civetD.to_s << '/'
-         puts "** civetDir: " + opt.civetDir if opt.verbose
+      opts.on('--civetScanDate civet_scan_date', "Usually a scan date of format YYYYMMDD") do |civetScanDate|
+         opt.civetScanDate = civetScanDate.to_s
+         puts "** civetScanDate: " + opt.civetScanDate if opt.verbose
       end
 
-      opts.on('--civetScanId civet_scan_ID', "civet subdirectory name for a given scan") do |civetID|
-         opt.civetScanId = civetID.to_s
-         puts "** civetScanId: " + opt.civetScanId if opt.verbose
+      opts.on('--settingsFile aggregated_settings_file', "Fullpath to the aggregated settings file ") do |settingsFile|
+         opt.settingsFile = settingsFile.to_s
+         puts "** Fullpath to the aggregated settings file: " + opt.settingsFile if opt.verbose
       end
 
       opts.on('--outDir output_dir', "Output directory (default is '#{opt.outDir}')") do |outDir|
@@ -144,29 +146,20 @@ begin
    end
    if !File.exists?(opt.tmpDir) then Dir.mkdir(opt.tmpDir) end
 
+
+   # load settings before interogating Civet-related options 
+   settings = load_beagle_aggregated_settings(opt.settingsFile, verbose=false, debug=false)
+
    # civet-related options have been specified?
-   if (opt.civetDir.empty? or opt.civetScanId.empty? ) then
+   if (opt.civetScanDate.empty? ) then
       puts "\n!!! Please specify both civet-related options"
       puts opts
       exit
    end
 
-   # ensure that the civet directory exists (and is a directory)
-   if (!File.exists?(opt.civetDir) or !File.directory?(opt.civetDir)) then
-      puts "\n!!! Please specify a valid civet root directory"
-      puts opts
-      exit
-   end
-
-   # is the civet scan-id option reasonable?
+   # is the civet scan date option reasonable? That is, does the subdir exist?
    # ... first, append the scan-id to the civet root dir name, then check
-   opt.civetScanIdFullpath = opt.civetDir + opt.civetScanId
-   if (!File.exists?(opt.civetScanIdFullpath) or !File.directory?(opt.civetScanIdFullpath)) then
-      puts "\n!!! Please specify a valid civet scan-ID  sub-directory"
-      puts "--- Directory #{opt.civetScanId} seems troublesome"
-      puts opts
-      exit
-   end
+   if !civetScanDirectoryName = civet_getScanDirectoryName(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt, fullpath:false, checkExistence:true) then exit end
 
    # print out some summary info about the dynamic volume (if verbose)
    if (opt.verbose) then
@@ -181,9 +174,7 @@ begin
       puts "   **                            Fake:    ON" if opt.fake
       puts "   **                  xfmToNativeMRI:    ON" if opt.xfmToNativeMRI
       puts "   **                    xfmToIcbmMRI:    ON" if opt.xfmToIcbmMRI
-      puts "   **         Civet filenaming prefix:    " + opt.civetPrefix
-      puts "   **            Civet root directory:    " + opt.civetDir
-      puts "   **                   Civet scan ID:    " + opt.civetScanId
+      puts "   **                 Civet scan date:    " + opt.civetScanDate
       puts "   **                Output directory:    " + opt.outDir
       puts "   **             Temp work directory:    " + opt.tmpDir
   
@@ -223,13 +214,9 @@ begin
    do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
 
    # align dynamic mean volume to native MRI (**must** use NUC-corrected volume)
-   native_mri_pathname = opt.civetDir + opt.civetScanId + '/native/'
-   native_mri_volname = opt.civetPrefix + opt.civetScanId + '_t1_nuc.mnc'
-   native_mri_fullname = native_mri_pathname + native_mri_volname
-   #
-   native_mriMask_pathname = opt.civetDir + opt.civetScanId + '/mask/'
-   native_mriMask_volname = opt.civetPrefix + opt.civetScanId + '_skull_mask_native.mnc'
-   native_mriMask_fullname = native_mriMask_pathname + native_mriMask_volname
+   native_mri_volname = civet_getFilenameNativeNUC(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt, fullpath:false, checkExistence:true)
+   native_mri_fullname = civet_getFilenameNativeNUC(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt)
+   native_mriMask_fullname = civet_getFilenameSkullMaskNative(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt)
    #
    puts "\n** align dynamic mean volume to native MRI (#{native_mri_volname} -- from Civet) ..."  if opt.verbose
    cmd = "minctracc -verbose 3 -clobber -simplex 5   "
@@ -270,13 +257,8 @@ begin
 
       # first we will need to concat our transform with that from civet
       # ... remember that order matters
-      icbm_xfm_pathname = opt.civetDir + opt.civetScanId + '/transforms/linear/'
-      icbm_xfm_filename = opt.civetPrefix + opt.civetScanId + '_t1_tal.xfm'
-      icbm_xfm_filename = icbm_xfm_pathname + icbm_xfm_filename
-
-      icbm_mri_pathname = opt.civetDir + opt.civetScanId + '/final/'
-      icbm_mri_volname = opt.civetPrefix + opt.civetScanId + '_t1_final.mnc'
-      icbm_mri_fullname = icbm_mri_pathname + icbm_mri_volname
+      icbm_xfm_filename = civet_getFilenameLinearTransform(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt, fullpath:true, checkExistence:true)
+      icbm_mri_fullname = civet_getFilenameStxT1(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt)
 
       puts "\n** concatenating xfms ..."   if opt.verbose
       cmd = "xfmconcat  -clobber  "

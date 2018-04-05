@@ -35,7 +35,7 @@ begin
    #
    opt.keyname             = ""
    opt.target              = ""                 # input dicom dirname or ecat filename
-   opt.scanId              = ""
+   opt.scanDate            = ""
    opt.settingsFile        = ""
 
 
@@ -66,9 +66,9 @@ begin
          puts "** keyname: " + opt.keyname if opt.debug
       end
       
-      opts.on('--scanId fdg_scan_id', "Usually a scan date of format YYYYMMDD") do |scanId|
-         opt.scanId = scanId
-         puts "** scan Id: " + opt.scanId if opt.verbose
+      opts.on('--scanDate fdg_scan_date', "Usually a scan date of format YYYYMMDD") do |scanDate|
+         opt.scanDate = scanDate
+         puts "** scan Id: " + opt.scanDate if opt.verbose
       end
 
       opts.on('--settingsFile aggregated_settings_file', "Fullpath to the aggregated settings file ") do |settingsFile|
@@ -120,7 +120,7 @@ begin
 
    # set some useful values
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
-   fdg_dir = 'FDG-' + opt.scanId
+   fdg_dir = 'FDG-' + opt.scanDate
    fdg_dir_fullPath = File.join(keyname_dir_fullPath, fdg_dir)
    fdgTmp_dir_fullPath = File.join(fdg_dir_fullPath, 'tmp')
    fdgLogs_dir_fullPath = File.join(fdg_dir_fullPath, 'logs')
@@ -131,7 +131,7 @@ begin
    # * * * * *  START of input argument validation   * * * * *
    #
    # keyname has been entered?
-   if ( opt.keyname.empty? or opt.scanId.empty? ) then
+   if ( opt.keyname.empty? or opt.scanDate.empty? ) then
       puts "\n*** Error: Subject keyname OR PiB scan date is missing"
       puts opts
       exit
@@ -248,8 +248,8 @@ begin
    # load subject's master logfile; write a start message
    progname = 'beagle_fdg_convert_native2mnc'
    logger = BeagleLogger.new(opt.keyname, settings, eraseLog=false)
-   logger.log_start_message(progname, opt.keyname, 'FDG', opt.scanId)
-   logger.log_message(progname, opt.keyname, 'FDG', opt.scanId, 'civet_version', CIVET_VERSION)
+   logger.log_start_message(progname, opt.keyname, 'FDG', opt.scanDate)
+   logger.log_message(progname, opt.keyname, 'FDG', opt.scanDate, 'civet_version', CIVET_VERSION)
 
 
    # now that we've verified that we have a /logs subdir,
@@ -323,7 +323,7 @@ begin
    set_job_status(fdgLogs_dir_fullPath, "beagle_fdg_convert_native2mnc_JobStatus", "finished")
 
    # log a 'done' message to the subject's master logfile, and then write out logfile
-   logger.log_stop_message(progname, opt.keyname, 'FDG', opt.scanId)
+   logger.log_stop_message(progname, opt.keyname, 'FDG', opt.scanDate)
    logger.save_to_file()
 
 rescue RuntimeError => e

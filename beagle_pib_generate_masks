@@ -34,8 +34,8 @@ begin
    opt.debug               = false
    opt.fake                = false
    opt.keyname             = ""
-   opt.scanId              = ""
-   opt.civetScanId         = ""
+   opt.scanDate            = ""
+   opt.civetScanDate       = ""
    opt.settingsFile        = ""
 
    
@@ -56,14 +56,14 @@ begin
          puts "** keyname: " + opt.keyname if opt.verbose
       end
       
-      opts.on('--scanId pib_scan_id', "Usually a scan date of format YYYYMMDD") do |scanId|
-         opt.scanId = scanId
-         puts "** scan date: " + opt.scanId if opt.verbose
+      opts.on('--scanDate pib_scan_date', "Usually a scan date of format YYYYMMDD") do |scanDate|
+         opt.scanDate = scanDate
+         puts "** PiB scan date: " + opt.scanDate if opt.verbose
       end
       
-      opts.on('--civetScanId scan_date', "Usually a scan date of format YYYYMMDD") do |civetScanId|
-         opt.civetScanId = civetScanId
-         puts "** Civet scan date: " + opt.civetScanId if opt.verbose
+      opts.on('--civetScanDate civet_scan_date', "Usually a scan date of format YYYYMMDD") do |civetScanDate|
+         opt.civetScanDate = civetScanDate
+         puts "** Civet scan date: " + opt.civetScanDate if opt.verbose
       end
 
       opts.on('--settingsFile aggregated_settings_file', "Fullpath to the aggregated settings file ") do |settingsFile|
@@ -105,20 +105,11 @@ begin
    # init associated variables
    LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
    CIVET_VERSION = settings['CIVET_VERSION']
-   CIVET_ROOT_DIR = settings['CIVET_ROOT_DIR']
-   CIVET_PREFIX = settings['CIVET_PREFIX'] + '_'
-   
    PIB_CEREB_THOLD_PCT = settings['PIB_CEREB_THOLD_PCT']
 
    # set some useful values
-   if ( settings['CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME'] == 'ON' ) then
-      civetScan_dir = opt.keyname + '-' + opt.civetScanId
-   else
-      civetScan_dir = opt.keyname
-   end
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
-   #
-   pib_dir = 'PiB-' + opt.scanId
+   pib_dir = 'PiB-' + opt.scanDate
    pib_dir_fullPath = File.join(keyname_dir_fullPath, pib_dir)
    pibTmp_dir_fullPath = File.join(pib_dir_fullPath, 'tmp')
    pibLogs_dir_fullPath = File.join(pib_dir_fullPath, 'logs')
@@ -127,7 +118,7 @@ begin
    pibTransforms_dir_fullPath = File.join(pib_dir_fullPath, 'transforms')
    pibMasks_dir_fullPath = File.join(pib_dir_fullPath, 'masks')
    #
-   masks_dir = 'MASKS-' + opt.civetScanId
+   masks_dir = 'masks-' + opt.civetScanDate
    masks_dir_fullPath = File.join(keyname_dir_fullPath, masks_dir)
 
 
@@ -135,14 +126,14 @@ begin
    # * * * * *  START of input argument validation   * * * * *
    #
    # keyname has been entered?
-   if ( opt.keyname.empty? or opt.scanId.empty? ) then
+   if ( opt.keyname.empty? or opt.scanDate.empty? ) then
       puts "\n*** Error: Subject keyname OR PiB scan date is missing"
       puts opts
       exit
    end
 
    # Civet scan date entered?
-   if ( opt.civetScanId.empty? ) then
+   if ( opt.civetScanDate.empty? ) then
       puts "\n*** Error: Civet scan date is missing"
       puts opts
       exit
@@ -160,8 +151,8 @@ begin
    # load subject's master logfile; write a start message
    progname = 'beagle_pib_generate_masks'
    logger = BeagleLogger.new(opt.keyname, settings, eraseLog=false)
-   logger.log_start_message(progname, opt.keyname, 'PiB', opt.scanId)
-   logger.log_message(progname, opt.keyname, 'PiB', opt.scanId, 'civet_version', CIVET_VERSION)
+   logger.log_start_message(progname, opt.keyname, 'PiB', opt.scanDate)
+   logger.log_message(progname, opt.keyname, 'PiB', opt.scanDate, 'civet_version', CIVET_VERSION)
 
    # now that we've verified that we have a /logs subdir,
    # ... set processing status to "running"
@@ -205,7 +196,7 @@ begin
    set_job_status(pibLogs_dir_fullPath, "beagle_pib_generate_masks_JobStatus", "finished")
 
    # log a 'done' message to the subject's master logfile, and then write out logfile
-   logger.log_stop_message(progname, opt.keyname, 'PiB', opt.scanId)
+   logger.log_stop_message(progname, opt.keyname, 'PiB', opt.scanDate)
    logger.save_to_file()
 
 rescue RuntimeError => e

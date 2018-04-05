@@ -1,0 +1,167 @@
+#!/opt/R/Rscript   --default-packages=utils,methods,base,stats,grDevices
+# ==============================================================================
+# PURPOSE:
+#
+usage_text <- 
+"\nbeagle_thickness_compute_roi_statistics.Rscript [options] "
+#
+description_text <- 
+"\n\n   The purpose of this script is to compute ROI-level cortical
+thickness zscores, given a vector file containing a zscore at each
+vertex. Results are cast into an AAL template, thus providing 
+quantification by AAL ROI. 
+"
+#
+# ==============================================================================
+print(sessionInfo())
+
+
+
+
+# = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
+#
+
+# Set options
+options(width=180)
+
+# load the HCLab beagle.statistics Analyis library
+library(beagle.statistics)  # loads rmincIO, rjson
+
+
+
+# setup the opt packet with whatever we need for this test
+opt <- list()
+opt$verbose <- TRUE
+opt$debug <- TRUE
+opt$settingsFile <- "/home/jnikelski/exported_home/devel/beagle-git/main/beagle_pipeline.settings"
+opt$runConfigFile <- ""
+print(opt)
+
+# print the R version details
+print(sessionInfo())
+print(R.Version())
+
+# read the Loris aggregated settings file (in JSON format)
+#cat(sprintf("BEFORE settings load\n"))
+settings <- read_beagle_settings(opt$settingsFile, verbose=FALSE)
+#cat(sprintf("AFTER settings load\n"))
+
+
+
+
+## ------- run the test using ADNI data
+civet_keyname <- '0139-F-AD'
+civet_scanid <- '000000'
+settings <- list()
+settings$CIVET_ROOT_DIR <- "/data/raid01/adni1Data/pipeOut"
+settings$CIVET_PREFIX <- "ADNI"
+settings$CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME <- FALSE
+settings$CIVET_VERSION <- '1.1.9'
+
+## ------- run the test using HCLab data
+#civet_keyname <- 'merlin'
+#civet_scanid <- '20021126'
+#settings <- list()
+#settings$CIVET_ROOT_DIR <- "/data/raid01/civetData/current/scans"
+#settings$CIVET_PREFIX <- "HCLab"
+#settings$CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME <- TRUE
+#settings$CIVET_VERSION <- '1.1.11'
+
+opt <- list()
+opt$verbose <- FALSE
+opt$debug <- FALSE
+
+#
+rx <- civet.getScanDirectoryName(civet_keyname, civet_scanid, settings, opt, fullpath=FALSE, checkExistence=FALSE)
+cat(sprintf("---> %s\n", rx))
+rx <- civet.getScanDirectoryName(civet_keyname, civet_scanid, settings, opt, fullpath=TRUE, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getFilenameClassify(civet_keyname, civet_scanid, settings, opt, fullpath=TRUE, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getFilenameGrayMatterPve(civet_keyname, civet_scanid, settings, opt, fullpath=TRUE, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getFilenameWhiteMatterPve(civet_keyname, civet_scanid, settings, opt, fullpath=TRUE, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getFilenameCsfPve(civet_keyname, civet_scanid, settings, opt, fullpath=TRUE, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getFilenameStxT1(civet_keyname, civet_scanid, settings, opt, fullpath=TRUE, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getFilenameCerebrumMask(civet_keyname, civet_scanid, settings, opt, fullpath=TRUE, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getFilenameSkullMask(civet_keyname, civet_scanid, settings, opt, fullpath=TRUE, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getFilenameNative(civet_keyname, civet_scanid, settings, opt, fullpath=TRUE, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getFilenameNativeNUC(civet_keyname, civet_scanid, settings, opt, fullpath=TRUE, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getFilenameSkullMaskNative(civet_keyname, civet_scanid, settings, opt, fullpath=TRUE, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getFilenameGrayMatterSurfaces(civet_keyname, civet_scanid, settings, opt, fullpath=TRUE, checkExistence=TRUE, resampled=TRUE)
+cat(sprintf("---> %s\n", rx$lh))
+cat(sprintf("---> %s\n", rx$rh))
+rx <-  civet.getFilenameWhiteMatterSurfaces(civet_keyname, civet_scanid, settings, opt, fullpath=TRUE, checkExistence=TRUE, resampled=TRUE)
+cat(sprintf("---> %s\n", rx$lh))
+cat(sprintf("---> %s\n", rx$rh))
+rx <-  civet.getFilenameMidSurfaces(civet_keyname, civet_scanid, settings, opt, fullpath=TRUE, checkExistence=TRUE, resampled=TRUE)
+cat(sprintf("---> %s\n", rx$lh))
+cat(sprintf("---> %s\n", rx$rh))
+rx <-  civet.getFilenameCorticalThickness(civet_keyname, civet_scanid, settings, opt, fullpath=TRUE, checkExistence=TRUE, resampled=TRUE)
+cat(sprintf("---> %s\n", rx$lh))
+cat(sprintf("---> %s\n", rx$rh))
+#rx <-  civet.getFilenameMeanSurfaceCurvature(civet_keyname, civet_scanid, settings, opt, fullpath=TRUE, checkExistence=TRUE, resampled=TRUE)
+#cat(sprintf("---> %s\n", rx$lh))
+#cat(sprintf("---> %s\n", rx$rh))
+rx <-  civet.getFilenameLinearTransform(civet_keyname, civet_scanid, settings, opt, fullpath=TRUE, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getFilenameNonlinearTransform(civet_keyname, civet_scanid, settings, opt, fullpath=TRUE, checkExistence=TRUE, inverted=FALSE)
+cat(sprintf("---> %s\n", rx$xfm))
+cat(sprintf("---> %s\n", rx$grid))
+rx <-  civet.getFilenameVbmBlurred(civet_keyname, civet_scanid, settings, opt, fullpath=TRUE, checkExistence=TRUE, symmetrical=FALSE)
+cat(sprintf("---> %s\n", rx$gm))
+cat(sprintf("---> %s\n", rx$wm))
+cat(sprintf("---> %s\n", rx$csf))
+
+# test Civet directory names
+rx <-  civet.getDirnameClassify(civet_keyname, civet_scanid, settings, opt, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getDirnameFinal(civet_keyname, civet_scanid, settings, opt, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getDirnameLogs(civet_keyname, civet_scanid, settings, opt, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getDirnameMask(civet_keyname, civet_scanid, settings, opt, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getDirnameNative(civet_keyname, civet_scanid, settings, opt, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getDirnameSurfaces(civet_keyname, civet_scanid, settings, opt, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getDirnameThickness(civet_keyname, civet_scanid, settings, opt, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getDirnameTransforms(civet_keyname, civet_scanid, settings, opt, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getDirnameTransformsLinear(civet_keyname, civet_scanid, settings, opt, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getDirnameTransformsNonlinear(civet_keyname, civet_scanid, settings, opt, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getDirnameVbm(civet_keyname, civet_scanid, settings, opt, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+rx <-  civet.getDirnameVerify(civet_keyname, civet_scanid, settings, opt, checkExistence=TRUE)
+cat(sprintf("---> %s\n", rx))
+
+# test the auxilliary functions
+rx <- civet.readCivetDatFiles(civet_keyname, civet_scanid, settings, opt)
+print(rx)
+rx <- civet.computeStxTissueVolumes(civet_keyname, civet_scanid, settings, opt)
+print(rx)
+rx <- civet.computeNativeToStxRescalingFactor(civet_keyname, civet_scanid, settings, opt)
+print(rx)
+rx <- civet.computeNativeTissueVolumes(civet_keyname, civet_scanid, settings, opt)
+print(rx)
+
+
+
+
+
+
+
+q(save="no")
+

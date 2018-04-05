@@ -41,8 +41,7 @@ begin
    opt.debug               = false
    opt.fake                = false
    opt.keyname             = ""          # subject keyname
-   opt.civetScanId         = ""          # civet subdirectory name for a given scan
-   opt.scanDate            = ""
+   opt.civetScanDate            = ""
    opt.aalVolname          = ""          # input subject's AAL labelled volume
    opt.classifyVolname     = ""          # input subject's tissue classification volume
    opt.logDir              = ""          # logfile/status directory
@@ -67,9 +66,9 @@ begin
          puts "** Subject keyname: " + opt.keyname if opt.verbose
       end
       
-      opts.on('--scanDate civet_scan_date', "civet scan date (e.g., 20091118)") do |scanDate|
-         opt.scanDate = scanDate.to_s
-         puts "** civet scan date: " + opt.scanDate if opt.verbose
+      opts.on('--civetScanDate civet_scan_date', "civet scan date (e.g., 20091118)") do |civetScanDate|
+         opt.civetScanDate = civetScanDate.to_s
+         puts "** civet scan date: " + opt.civetScanDate if opt.verbose
       end
          
       opts.on('--labelledAALvolume aal_label_volume', "subject's AAL labelled volume") do |aalVol|
@@ -126,10 +125,7 @@ begin
 
    # init selected variables
    LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
-   CIVET_ROOT_DIR = settings['CIVET_ROOT_DIR']
-   
    CIVET_VERSION = settings['CIVET_VERSION']
-   CIVET_PREFIX = settings['CIVET_PREFIX'] + '_'
    CIVET_TISSUE_TYPE_BACKGROUND = settings['CIVET_TISSUE_TYPE_BACKGROUND']
    CIVET_TISSUE_TYPE_CSF = settings['CIVET_TISSUE_TYPE_CSF']
    CIVET_TISSUE_TYPE_GM = settings['CIVET_TISSUE_TYPE_GM']
@@ -138,16 +134,8 @@ begin
 
    LORIS_AAL_LABELLED_VOLUME_SUFFIX = '_t1_final_AAL120Labels.mnc'
 
-   # are we going to use scan date to access the Civet output files/directories?
-   if ( settings['CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME'] == 'ON' ) then
-      opt.civetScanId = opt.keyname + '-' + opt.scanDate
-   else
-      opt.civetScanId = opt.keyname
-   end
-  
    keyname_dir_fullPath = File.join(LORIS_ROOT_DIR, opt.keyname)
-   
-   masks_dir = 'MASKS-' + opt.scanDate
+   masks_dir = 'masks-' + opt.civetScanDate
    masks_dir_fullPath = File.join(keyname_dir_fullPath, masks_dir)
    masksLogs_dir_fullPath = File.join(masks_dir_fullPath, 'logs')
 
@@ -156,7 +144,7 @@ begin
    # * * * * *  START of input argument validation   * * * * *
    #
    # keyname has been entered?
-   if ( opt.keyname.empty? or opt.scanDate.empty? ) then
+   if ( opt.keyname.empty? or opt.civetScanDate.empty? ) then
       puts "\n*** Error: Subject keyname OR civet scan date is missing"
       puts opts
       exit
@@ -183,16 +171,9 @@ begin
 
    # * * * * *   START of subject/scan-specific validation   * * * * *
    #
-   # check for Civet-generated classify volume 
-   filename_fullPath = civet_getFilenameClassify(opt.civetScanId, settings, opt)
-   if !File.exists?( filename_fullPath ) then
-      puts sprintf("\n!!! Error: Civet-generated tissue classification volume not found: %s", filename_fullPath)
-      exit
-   end
-   
    # make sure that we have already created an AAL label volume for this subject
    filename = opt.keyname + LORIS_AAL_LABELLED_VOLUME_SUFFIX
-   labels_dir = 'AAL-' + opt.scanDate
+   labels_dir = 'AAL-' + opt.civetScanDate
    filename_fullPath = File.join(keyname_dir_fullPath, labels_dir, filename)
    if !File.exists?( filename_fullPath ) then
       puts sprintf("\n!!! Error: Beagle-generated AAL label volume not found: %s", filename_fullPath)
@@ -207,8 +188,8 @@ begin
    # load subject's master logfile; write a start message
    progname = 'beagle_masks_generate_from_labels'
    logger = BeagleLogger.new(opt.keyname, settings, eraseLog=false)
-   logger.log_start_message(progname, opt.keyname, 'MASKS', opt.scanDate)
-   logger.log_message(progname, opt.keyname, 'MASKS', opt.scanDate, 'civet_version', CIVET_VERSION)
+   logger.log_start_message(progname, opt.keyname, 'MASKS', opt.civetScanDate)
+   logger.log_message(progname, opt.keyname, 'MASKS', opt.civetScanDate, 'civet_version', CIVET_VERSION)
 
 
    # good, now we can set a 'running' status in the logs subdir
@@ -218,27 +199,34 @@ begin
 
 
    # start by creating a bunch of mask volumes from the 
-   # final (discrete, non-pve) tissue classification volume
+   # final (discrete-ish, non-pve) tissue classification volume (stored as discrete-ish float values)
    #
    # create a gray matter mask from the final classify volume
+   fudge = 0.1
+   const1 = CIVET_TISSUE_TYPE_GM.to_f - fudge
+   const2 = CIVET_TISSUE_TYPE_GM.to_f + fudge
    cmd = "mincmath -clobber -verbose "
-   cmd << "-const2 #{CIVET_TISSUE_TYPE_GM} #{CIVET_TISSUE_TYPE_GM} "
+   cmd << "-const2 #{const1.to_s} #{const2.to_s} "
    cmd << "-segment "
    cmd << "#{opt.classifyVolname} "
    cmd << "#{masks_dir_fullPath}/wholeBrain_gray_matter_mask.mnc "
    do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
 
    # create a white matter mask from the final classify volume
+   const1 = CIVET_TISSUE_TYPE_WM.to_f - fudge
+   const2 = CIVET_TISSUE_TYPE_WM.to_f + fudge
    cmd = "mincmath -clobber -verbose "
-   cmd << "-const2 #{CIVET_TISSUE_TYPE_WM} #{CIVET_TISSUE_TYPE_WM} "
+   cmd << "-const2 #{const1.to_s} #{const2.to_s} "
    cmd << "-segment "
    cmd << "#{opt.classifyVolname} "
    cmd << "#{masks_dir_fullPath}/wholeBrain_white_matter_mask.mnc "
    do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
 
    # create a CSF mask from the final classify volume
+   const1 = CIVET_TISSUE_TYPE_CSF.to_f - fudge
+   const2 = CIVET_TISSUE_TYPE_CSF.to_f + fudge
    cmd = "mincmath -clobber -verbose "
-   cmd << "-const2 #{CIVET_TISSUE_TYPE_CSF} #{CIVET_TISSUE_TYPE_CSF} "
+   cmd << "-const2 #{const1.to_s} #{const2.to_s} "
    cmd << "-segment "
    cmd << "#{opt.classifyVolname} "
    cmd << "#{masks_dir_fullPath}/wholeBrain_csf_mask.mnc "
@@ -280,7 +268,7 @@ begin
    set_job_status(masksLogs_dir_fullPath, "beagle_masks_generate_from_labels_JobStatus", "finished")
 
    # log a 'done' message to the subject's master logfile, and then write out logfile
-   logger.log_stop_message(progname, opt.keyname, 'MASKS', opt.scanDate)
+   logger.log_stop_message(progname, opt.keyname, 'MASKS', opt.civetScanDate)
    logger.save_to_file()
 
 

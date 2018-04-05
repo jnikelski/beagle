@@ -30,7 +30,7 @@ begin
    opt.fake                = false
    #
    opt.keyname             = ""
-   opt.scanId              = ""
+   opt.civetScanDate       = ""
    opt.settingsFile        = ""
    opt.t1UnderlayVol       = ""
 
@@ -51,9 +51,9 @@ begin
          puts "** subject keyname: " + opt.keyname if opt.verbose
       end
 
-      opts.on('--scanDate scan_date', "Format YYYYMMDD") do |scanId|
-         opt.scanId = scanId
-         puts "** scan date: " + opt.scanId if opt.verbose
+      opts.on('--civetScanDate civet_scan_date', "Format YYYYMMDD") do |civetScanDate|
+         opt.civetScanDate = civetScanDate
+         puts "** Civet scan date: " + opt.civetScanDate if opt.verbose
       end
 
       opts.on('--settingsFile aggregated_settings_file', "Fullpath to the aggregated settings file ") do |settingsFile|
@@ -101,15 +101,7 @@ begin
    # init selected variables
    LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
    CIVET_VERSION = settings['CIVET_VERSION']
-   CIVET_ROOT_DIR = settings['CIVET_ROOT_DIR']
-   CIVET_PREFIX = settings['CIVET_PREFIX'] + '_'
 
-   # are we going to use scan date to access the Civet output files/directories?
-   if ( settings['CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME'] == 'ON' ) then
-      opt.civetScanId = opt.keyname + '-' + opt.scanId
-   else
-      opt.civetScanId = opt.keyname
-   end
 
    # set volumetric visualization thresholds
    VBM_VOLUMETRIC_VIZ_FLOOR = settings['VBM_VOLUMETRIC_VIZ_FLOOR']
@@ -119,7 +111,7 @@ begin
 
    # set some useful values/directories
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
-   vbm_dir = 'VBM-' + opt.scanId
+   vbm_dir = 'VBM-' + opt.civetScanDate
    vbm_dir_fullPath = File.join(keyname_dir_fullPath, vbm_dir)
    vbmLogs_dir_fullPath = File.join(vbm_dir_fullPath, 'logs')
 
@@ -154,8 +146,8 @@ begin
    end
 
    # scan date entered?
-   if ( opt.scanId.empty? ) then
-      puts "\n*** Error: Civet scan ID is missing ... we really need that."
+   if ( opt.civetScanDate.empty? ) then
+      puts "\n*** Error: Civet scan date is missing ... we really need that."
       puts opts
       exit
    end
@@ -180,8 +172,8 @@ begin
    # load subject's master logfile; write a start message
    progname = 'beagle_vbm_volumetric_visualization'
    logger = BeagleLogger.new(opt.keyname, settings, eraseLog=false)
-   logger.log_start_message(progname, opt.keyname, 'VBM', opt.scanId)
-   logger.log_message(progname, opt.keyname, 'VBM', opt.scanId, 'civet_version', CIVET_VERSION)
+   logger.log_start_message(progname, opt.keyname, 'VBM', opt.civetScanDate)
+   logger.log_message(progname, opt.keyname, 'VBM', opt.civetScanDate, 'civet_version', CIVET_VERSION)
 
    # set job status to "running"
    set_job_status(vbmLogs_dir_fullPath, "beagle_vbm_volumetric_visualization_JobStatus", "running")
@@ -265,7 +257,7 @@ begin
    set_job_status(vbmLogs_dir_fullPath, "beagle_vbm_volumetric_visualization_JobStatus", "finished")
 
    # log a 'done' message to the subject's master logfile, and then write out logfile
-   logger.log_stop_message(progname, opt.keyname, 'VBM', opt.scanId)
+   logger.log_stop_message(progname, opt.keyname, 'VBM', opt.civetScanDate)
    logger.save_to_file()
 
 rescue RuntimeError => e

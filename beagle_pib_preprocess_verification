@@ -27,6 +27,7 @@ require 'pp'
 # load external dependencies
 require 'hclab_function_library'
 require 'beagle_function_library'
+require 'beagle_civet_function_library'
 require 'beagle_logger_classes'
 
 # start of main script
@@ -36,8 +37,8 @@ begin
    opt.debug               = false
    opt.fake                = false
    opt.keyname             = ""
-   opt.scanId              = ""
-   opt.civetScanId         = ""
+   opt.scanDate            = ""
+   opt.civetScanDate       = ""
    opt.settingsFile        = ""
    
    # List of arguments.
@@ -57,14 +58,14 @@ begin
          puts "** keyname: " + opt.keyname if opt.verbose
       end
    
-      opts.on('--scanId pib_scan_id', "Usually a scan date of format YYYYMMDD") do |scanId|
-         opt.scanId = scanId
-         puts "** scan date: " + opt.scanId if opt.verbose
+      opts.on('--scanDate pib_scan_date', "Usually a scan date of format YYYYMMDD") do |scanDate|
+         opt.scanDate = scanDate
+         puts "** PiB scan date: " + opt.scanDate if opt.verbose
       end
       
-      opts.on('--civetScanId scan_date', "Usually a scan date of format YYYYMMDD") do |civetScanId|
-         opt.civetScanId = civetScanId
-         puts "** Civet scan date: " + opt.civetScanId if opt.verbose
+      opts.on('--civetScanDate civet_scan_date', "Usually a scan date of format YYYYMMDD") do |civetScanDate|
+         opt.civetScanDate = civetScanDate
+         puts "** Civet scan date: " + opt.civetScanDate if opt.verbose
       end
 
       opts.on('--settingsFile aggregated_settings_file', "Fullpath to the aggregated settings file ") do |settingsFile|
@@ -106,22 +107,12 @@ begin
    # init associated variables
    LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
    CIVET_VERSION = settings['CIVET_VERSION']
-   CIVET_ROOT_DIR = settings['CIVET_ROOT_DIR']
-   CIVET_PREFIX = settings['CIVET_PREFIX'] + '_'
-   CIVET_FINAL_T1_VOLUME_SUFFIX = settings['CIVET_FINAL_T1_VOLUME_SUFFIX']
-   
    PIB_CEREB_THOLD_PCT = settings['PIB_CEREB_THOLD_PCT'].to_f
 
 
    # set some useful values
-   if ( settings['CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME'] == 'ON' ) then
-      civetScan_dir = opt.keyname + '-' + opt.civetScanId
-   else
-      civetScan_dir = opt.keyname
-   end
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
-   #
-   pib_dir = 'PiB-' + opt.scanId
+   pib_dir = 'PiB-' + opt.scanDate
    pib_dir_fullPath = File.join(keyname_dir_fullPath, pib_dir)
    pibTmp_dir_fullPath = File.join(pib_dir_fullPath, 'tmp')
    pibLogs_dir_fullPath = File.join(pib_dir_fullPath, 'logs')
@@ -131,7 +122,7 @@ begin
    pibMasks_dir_fullPath = File.join(pib_dir_fullPath, 'masks')
    pibImages_dir_fullPath = File.join(pib_dir_fullPath, 'images')
    #
-   masks_dir = 'MASKS-' + opt.civetScanId
+   masks_dir = 'masks-' + opt.civetScanDate
    masks_dir_fullPath = File.join(keyname_dir_fullPath, masks_dir)
    CEREB_GM_MASK_VOLUME_FULLPATH = File.join(masks_dir_fullPath, 'cerebellum_mask_gm.mnc')
 
@@ -140,14 +131,14 @@ begin
    # * * * * *  START of input argument validation   * * * * *
    #
    # keyname has been entered?
-   if ( opt.keyname.empty? or opt.scanId.empty? ) then
+   if ( opt.keyname.empty? or opt.scanDate.empty? ) then
       puts "\n*** Error: Subject keyname OR PiB scan date is missing"
       puts opts
       exit
    end
 
    # Civet scan date entered?
-   if ( opt.civetScanId.empty? ) then
+   if ( opt.civetScanDate.empty? ) then
       puts "\n*** Error: Civet scan date is missing"
       puts opts
       exit
@@ -166,8 +157,8 @@ begin
    # load subject's master logfile; write a start message
    progname = 'beagle_pib_preprocess_verification'
    logger = BeagleLogger.new(opt.keyname, settings, eraseLog=false)
-   logger.log_start_message(progname, opt.keyname, 'PiB', opt.scanId)
-   logger.log_message(progname, opt.keyname, 'PiB', opt.scanId, 'civet_version', CIVET_VERSION)
+   logger.log_start_message(progname, opt.keyname, 'PiB', opt.scanDate)
+   logger.log_message(progname, opt.keyname, 'PiB', opt.scanDate, 'civet_version', CIVET_VERSION)
 
    # now that we've verified that we have a /logs subdir,
    # ... set processing status to "running"
@@ -189,7 +180,7 @@ begin
    sumIndex = cmdResult.rindex("Sum:")
    gmMaskCount = cmdResult[sumIndex +1].to_i
    puts "\n** I see #{gmMaskCount} cerebellar voxels in the gray matter mask" 
-   logger.log_message(progname, opt.keyname, 'PiB', opt.scanId, 'nVox_in_cerebGMmask', gmMaskCount)
+   logger.log_message(progname, opt.keyname, 'PiB', opt.scanDate, 'nVox_in_cerebGMmask', gmMaskCount)
    
    
    # get the total number of voxels comprising the adjusted cerebellar GM mask
@@ -206,7 +197,7 @@ begin
    sumIndex = cmdResult.rindex("Sum:")
    dynamicCount = cmdResult[sumIndex +1].to_i
    puts "\n** I see #{dynamicCount} non-zero intensity cerebellar voxels in the masked mean dynamic volume" 
-   logger.log_message(progname, opt.keyname, 'PiB', opt.scanId, 'nVox_in_adjustedCerebGMmask', dynamicCount)
+   logger.log_message(progname, opt.keyname, 'PiB', opt.scanDate, 'nVox_in_adjustedCerebGMmask', dynamicCount)
 
    # if the voxel counts are not the same, then we have a problem
    # ... set error status and terminate
@@ -218,7 +209,7 @@ begin
    #
    # ... error if too different
    pctInScanner = (dynamicCount.to_f / gmMaskCount.to_f) * 100.0
-   logger.log_message(progname, opt.keyname, 'PiB', opt.scanId, 'percent_included_voxels', pctInScanner)
+   logger.log_message(progname, opt.keyname, 'PiB', opt.scanDate, 'percent_included_voxels', pctInScanner)
                                        
    if ( pctInScanner < PIB_CEREB_THOLD_PCT ) then
       set_job_status(pibLogs_dir_fullPath, "beagle_pib_preprocess_verification_Warning", "error")
@@ -249,7 +240,7 @@ begin
 
    # generate the images
    visualization_dir = File.join(keyname_dir_fullPath, 'visualization')
-   anatomical_underlay_volume = CIVET_PREFIX + civetScan_dir + CIVET_FINAL_T1_VOLUME_SUFFIX
+   anatomical_underlay_volume = civet_getFilenameStxT1(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt, fullpath:false, checkExistence:true)
    #
    puts "\n** Create verification image ..."   if opt.verbose
    cmd = "mincthumbs -v   "
@@ -271,7 +262,7 @@ begin
    set_job_status(pibLogs_dir_fullPath, "beagle_pib_preprocess_verification_JobStatus", "finished")
 
    # log a 'done' message to the subject's master logfile, and then write out logfile
-   logger.log_stop_message(progname, opt.keyname, 'PiB', opt.scanId)
+   logger.log_stop_message(progname, opt.keyname, 'PiB', opt.scanDate)
    logger.save_to_file()
 
 rescue RuntimeError => e

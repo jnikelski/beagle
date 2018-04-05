@@ -6,9 +6,10 @@ library(xtable)
 # read passed arguments from args file
 # (1) keyname           [ e.g., tofty]
 # (2) rootDir           [ the Loris output root, containing all keyname subdirs]
-# (3) analysis_type     [ VBM, PiB, FDG, THICKNESS, etc ... must match subdir prefix]
-# (4) scan_id           [ YYYYMMDD ... must match subdir suffix]
-# (5) settings_filename [ fullpath to the aggregated settings file]
+# (3) analysis_type     [ VBM, PiB, FDG, thickness, etc ... must match subdir prefix]
+# (4) scan_date         [ YYYYMMDD ]
+# (5) civet_scan_date   [ YYYYMMDD ]
+# (6) settings_filename [ fullpath to the aggregated settings file]
 #
 source("args_file.txt")
 
@@ -24,7 +25,7 @@ N_VERTICES_HEMISPHERE <- N_VERTICES_CORTEX / 2
 
 
 # construct useful filename
-cta_subdir <- paste(analysis_type, scan_id, sep="-")
+cta_subdir <- paste(analysis_type, scan_date, sep="-")
 cta_subdir_fullPath <- file.path(rootDir, keyname, cta_subdir)
 cta_images_subdir_fullPath <- file.path(cta_subdir_fullPath, 'images')
 
@@ -46,8 +47,8 @@ img_individualSurfaceViz_zscores_fullPath = file.path(cta_images_subdir_fullPath
 
 @
 
-\chapter{Findings: \texttt{CTA-\Sexpr{scan_id}}}
-In this chapter, we present the cortical thickness analysis findings for subject \texttt{\Sexpr{keyname}}, based on the T1 scan acquired on \texttt{\Sexpr{scan_id}}. 
+\chapter{Findings: \texttt{CTA-\Sexpr{scan_date}}}
+In this chapter, we present the cortical thickness analysis findings for subject \texttt{\Sexpr{keyname}}, based on the T1 scan acquired on \texttt{\Sexpr{scan_date}}. 
 
 \section{Measurement of Cortical Thickness}
 Table~\ref{tab:cta_thickness_summary} shows the breakdown of thickness values by hemisphere. Brains not affected by a hemisphere-specific pathological process should show very similar values over both hemispheres. The distribution of vertex-level thickness values are illustrated in Figure~\ref{fig:cta_thickness_distribution}. One would expect the distributions across hemispheres to be very similar in normal individuals.

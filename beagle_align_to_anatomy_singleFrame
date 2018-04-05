@@ -14,6 +14,8 @@ require 'tmpdir'            # needed for Dir::tmpdir
 
 # these libs are pointed to by the RUBYLIB env variable
 require 'hclab_function_library'
+require 'beagle_function_library'
+require 'beagle_civet_function_library'
 
 # start of main script
 begin
@@ -24,8 +26,8 @@ begin
    opt.tmpDir              = ""          # work directory
    opt.outDir              = "."         # output directory
    opt.keyname             = ""
-   opt.civetScanDate       = ""          # civet subdirectory name for a given scan
-   opt.settingsFile        = ""          # civet subdirectory name for a given scan
+   opt.civetScanDate       = ""          # civet scan identifier (usually a date) for a given scan
+   opt.settingsFile        = ""          # Beagle settings file
    opt.xfmToNativeMRI      = false       # transform dynamic volume to match native MRI
    opt.xfmToIcbmMRI        = false       # transform dynamic volume to match ICBM-152 MRI
    opt.logfile             = ""          # logfile
@@ -110,8 +112,14 @@ begin
    # * * * * *  START of input argument validation   * * * * *
    #
    # keyname has been entered?
-   if ( opt.keyname.empty? or opt.scanId.empty? ) then
+   if ( opt.keyname.empty? ) then
       puts "\n*** Error: Subject keyname is missing"
+      puts opts
+      exit
+   end
+
+   if ( opt.civetScanDate.empty? ) then
+      puts "\n*** Error: Civet scan date arg is missing"
       puts opts
       exit
    end
@@ -179,8 +187,8 @@ begin
 
    # is the civet scan-id option reasonable?
    # ... first, append the scan-id to the civet root dir name, then check
-   opt.civetScanIdFullpath = civet_getScanDirectoryName(opt.keyname, opt.civetScanDate, settings, opt, fullpath=true, checkExistence=true)
-   if (!File.exists?(opt.civetScanIdFullpath) or !File.directory?(opt.civetScanIdFullpath)) then
+   civetScanIdFullpath = civet_getScanDirectoryName(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt, fullpath:true, checkExistence:true)
+   if (!File.exists?(civetScanIdFullpath) or !File.directory?(civetScanIdFullpath)) then
       puts "\n!!! Please specify a valid civet scan-ID  sub-directory"
       puts "--- Directory #{civetScanIdFullpath} seems troublesome"
       puts opts
@@ -210,9 +218,9 @@ begin
 
 
    # align dynamic volume to native MRI (**must** use NUC-corrected volume)
-   native_mri_fullname = civet_getFilenameNativeNUC(opt.keyname, opt.civetScanDate, settings, opt, checkExistence=true)
-   native_mriMask_fullname =  = civet_getFilenameSkullMaskNative(opt.keyname, opt.civetScanDate, settings, opt, checkExistence=true)
-
+   native_mri_fullname = civet_getFilenameNativeNUC(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt)
+   native_mriMask_fullname = civet_getFilenameSkullMaskNative(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt)
+   
    # if we need a global rescale prior to fitting, do it now
    if ( opt.rescale != 1.0 ) then
       puts "\n** globally rescale dynamic volume by a factor of #{opt.rescale.to_s} ..."  if opt.verbose
@@ -233,7 +241,7 @@ begin
    end
 
 
-   puts "\n** align dynamic volume to native MRI (#{native_mri_volname} -- from Civet) ..."  if opt.verbose
+   puts "\n** align dynamic volume to native MRI (#{native_mri_fullname} -- from Civet) ..."  if opt.verbose
    cmd = "minctracc -verbose 3 -clobber -simplex 5   "
    cmd << "#{opt.minctraccOpts}  "
    cmd << "-est_center -est_translations "
@@ -260,13 +268,8 @@ begin
 
       # first we will need to concat our transform with that from civet
       # ... remember that order matters
-      icbm_xfm_pathname = opt.civetDir + opt.civetScanId + '/transforms/linear/'
-      icbm_xfm_filename = opt.civetPrefix + opt.civetScanId + '_t1_tal.xfm'
-      icbm_xfm_filename = icbm_xfm_pathname + icbm_xfm_filename
-
-      icbm_mri_pathname = opt.civetDir + opt.civetScanId + '/final/'
-      icbm_mri_volname = opt.civetPrefix + opt.civetScanId + '_t1_final.mnc'
-      icbm_mri_fullname = icbm_mri_pathname + icbm_mri_volname
+      icbm_xfm_filename = civet_getFilenameLinearTransform(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt, fullpath:true, checkExistence:true)
+      icbm_mri_fullname = civet_getFilenameStxT1(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt, fullpath:true, checkExistence:true)
 
       puts "\n** concatenating xfms ..."   if opt.verbose
       cmd = "xfmconcat    "

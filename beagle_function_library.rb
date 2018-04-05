@@ -151,17 +151,18 @@ end
 # ==============================================================================
 #
 def load_beagle_aggregated_settings(settings_file, verbose=false, debug=false)
+   require 'json'
    #
    # has a nil value been passed?
    #     i.e., the config filename has not been set
    if ( settings_file.empty? ) then
-      puts sprintf("\n*** Error: Fullpath to Loris aggregate settings file must be specified")
+      puts sprintf("\n*** load_beagle_aggregated_settings(): Error: Fullpath to Loris aggregate settings file must be specified")
       exit
    end
 
    # file exists?
    if ( !File.exists?(settings_file) or !File.file?(settings_file) ) then
-      puts sprintf("\n*** Error: Loris aggregate settings file [%s] does not exist.", settings_file)
+      puts sprintf("\n*** load_beagle_aggregated_settings(): Error: Loris aggregate settings file [%s] does not exist.", settings_file)
       exit
    end
 

@@ -29,6 +29,7 @@
 # Function signatures by Civet directory:
 #
 # assorted useful functions
+#rx = civet_getCivetRootDirectoryName(settings:, opt:, checkExistence:true)
 #rx = civet_getScanDirectoryName(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:false, checkExistence:false)
 #rx = civet_checkVersion(civet_version:, opt:)
 #
@@ -36,50 +37,50 @@
 # file/directory access functions
 #
 # /classify
-#rx = civet_getDirnameClassify(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
+#rx = civet_getDirnameClassify(civet_keyname:, civet_scanid:, settings:, opt:, checkExistence:true)
 #rx = civet_getFilenameClassify(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
 #rx = civet_getFilenameGrayMatterPve(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
 #rx = civet_getFilenameWhiteMatterPve(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
 #rx = civet_getFilenameCsfPve(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
 #
 # /final
-#rx = civet_getDirnameFinal(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
+#rx = civet_getDirnameFinal(civet_keyname:, civet_scanid:, settings:, opt:, checkExistence:true)
 #rx = civet_getFilenameStxT1(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
 #
 # /mask
-#rx = civet_getDirnameMask(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
+#rx = civet_getDirnameMask(civet_keyname:, civet_scanid:, settings:, opt:, checkExistence:true)
 #rx = civet_getFilenameCerebrumMask(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
 #rx = civet_getFilenameSkullMask(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
 #
 # /native
-#rx = civet_getDirnameNative(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
+#rx = civet_getDirnameNative(civet_keyname:, civet_scanid:, settings:, opt:, checkExistence:true)
 #rx = civet_getFilenameNative(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
 #rx = civet_getFilenameNativeNUC(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
 #rx = civet_getFilenameSkullMaskNative(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
 #
 # /surfaces
-#rx = civet_getDirnameSurfaces(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
+#rx = civet_getDirnameSurfaces(civet_keyname:, civet_scanid:, settings:, opt:, checkExistence:true)
 #rxLh, rxRh = civet_getFilenameGrayMatterSurfaces(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true, resampled:true)
 #rxLh, rxRh = civet_getFilenameWhiteMatterSurfaces(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true, resampled:true)
 #rxLh, rxRh = civet_getFilenameMidSurfaces(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true, resampled:true)
 #
 # /thickness
-#rx = civet_getDirnameThickness(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
+#rx = civet_getDirnameThickness(civet_keyname:, civet_scanid:, settings:, opt:, checkExistence:true)
 #rxLh, rxRh = civet_getFilenameCorticalThickness(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true, resampled:true)
 #rxLh, rxRh = civet_getFilenameMeanSurfaceCurvature(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true, resampled:true)
 #
 # /transforms/linear   & /transforms/nonlinear
-#rx = civet_getDirnameTransforms(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
-#rx = civet_getDirnameTransformsLinear(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
-#rx = civet_getDirnameTransformsNonlinear(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
+#rx = civet_getDirnameTransforms(civet_keyname:, civet_scanid:, settings:, opt:, checkExistence:true)
+#rx = civet_getDirnameTransformsLinear(civet_keyname:, civet_scanid:, settings:, opt:, checkExistence:true)
+#rx = civet_getDirnameTransformsNonlinear(civet_keyname:, civet_scanid:, settings:, opt:, checkExistence:true)
 #rx = civet_getFilenameLinearTransform(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
 #rxLh, rxRh = civet_getFilenameNonlinearTransform(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true, inverted:false)
 #
 # assorted Civet directories
-#rx = civet_getDirnameLogs(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
-#rx = civet_getDirnameNative(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
-#rx = civet_getDirnameVBM(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
-#rx = civet_getDirnameVerify(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
+#rx = civet_getDirnameLogs(civet_keyname:, civet_scanid:, settings:, opt:, checkExistence:true)
+#rx = civet_getDirnameNative(civet_keyname:, civet_scanid:, settings:, opt:, checkExistence:true)
+#rx = civet_getDirnameVBM(civet_keyname:, civet_scanid:, settings:, opt:, checkExistence:true)
+#rx = civet_getDirnameVerify(civet_keyname:, civet_scanid:, settings:, opt:, checkExistence:true)
 #
 # Typical uses:
 # [a]
@@ -91,7 +92,7 @@
 #puts "Fall through case: floppy value: #{floopy}"
 #
 # typical use case [b] -- much shorter, with no additional error messages ... just an exit
-#if !civet_classify_volname_fullPath=civet_getFilenameGrayMatterPve((civet_keyname:"zulu", civet_scanid:"20070703xxx", settings:settings, opt:opt, checkExistence:true) then exit end
+#if !civet_classify_volname_fullPath=civet_getFilenameGrayMatterPve(civet_keyname:"zulu", civet_scanid:"20070703xxx", settings:settings, opt:opt, checkExistence:true) then exit end
 #
 # ==============================================================================
 #
@@ -106,6 +107,26 @@ def civet_checkVersion(civet_version:, opt:)
     end
     #
     print ("Exiting method *civet_checkVersion* ...\n") if opt.debug
+end
+
+
+def civet_getCivetRootDirectoryName(settings:, opt:, checkExistence:true)
+   #
+   print ("Entering method *civet_getCivetRootDirectoryName* ...\n") if opt.debug
+
+   civetScanDirname = settings['CIVET_ROOT_DIR']
+
+   # check for file existence if requested
+   if ( checkExistence ) then
+      if ( !File.exists?(civetScanDirname) ) then
+         puts sprintf("\n*** Error: Required directory does not exist\n")
+         puts sprintf("*********: Fullpath of directory: [%s]\n\n", civetScanDirname)
+         civetScanDirname = false
+      end
+   end
+
+   print ("Exiting method *civet_getCivetRootDirectoryName* ...\n") if opt.debug
+   return civetScanDirname
 end
 
 
@@ -127,13 +148,13 @@ def civet_getScanDirectoryName(civet_keyname:, civet_scanid:, settings:, opt:, f
    end
 
    # check for file existence if requested
-  if ( checkExistence && fullpath) then
-   if ( !File.exists?(civetScanDirname) ) then
-      puts sprintf("\n*** Error: Required directory does not exist\n")
-      puts sprintf("*********: Fullpath of directory: [%s]\n\n", civetScanDirname)
-      civetScanDirname = false
+   if ( checkExistence && fullpath) then
+      if ( !File.exists?(civetScanDirname) ) then
+         puts sprintf("\n*** Error: Required directory does not exist\n")
+         puts sprintf("*********: Fullpath of directory: [%s]\n\n", civetScanDirname)
+         civetScanDirname = false
+      end
    end
-end
 
    print ("Exiting method *civet_getScanDirectoryName* ...\n") if opt.debug
    return civetScanDirname

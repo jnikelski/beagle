@@ -246,7 +246,7 @@ class FdgSubjectDetails
       values["keyname"] = field_1
       values["scanDate"] = field_2
       values["civetScanDate"] = field_4
-      values["civetScanDirectoryName"] = civet_getScanDirectoryName(values["keyname"], values["civetScanDate"], settings, opt, fullpath=false, checkExistence=false)
+      values["civetScanDirectoryName"] = civet_getScanDirectoryName(civet_keyname:values["keyname"], civet_scanid:values["civetScanDate"], settings:settings, opt:opt, fullpath:false, checkExistence:false)
       
       # field 3 contains 2 subfields with a ";" separator:
       #     subfield 1: "ecat" or "dicom"
@@ -372,7 +372,7 @@ class PiBSubjectDetails
       values["scanDate"] = csv_parts[1]
       values["ecatFilename"] = csv_parts[2]
       values["civetScanDate"] = csv_parts[3]
-      values["civetScanDirectoryName"] = civet_getScanDirectoryName(values["keyname"], values["civetScanDate"], settings, opt, fullpath=false, checkExistence=false)
+      values["civetScanDirectoryName"] = civet_getScanDirectoryName(civet_keyname:values["keyname"], civet_scanid:values["civetScanDate"], settings:settings, opt:opt, fullpath:false, checkExistence:false)
       
 
       # done. Return the extracted values
@@ -486,8 +486,9 @@ class CivetSubjectDetails
       # get contents of the 2 fields
       values["keyname"] = csv_parts[0]
       values["civetScanDate"] = csv_parts[1]
-      values["civetScanDirectoryName"] = civet_getScanDirectoryName(values["keyname"], values["civetScanDate"], settings, opt, fullpath=false, checkExistence=false)
+      values["civetScanDirectoryName"] = civet_getScanDirectoryName(civet_keyname:values["keyname"], civet_scanid:values["civetScanDate"], settings:settings, opt:opt, fullpath:false, checkExistence:false)
       
+
       # done. Return the extracted values
       return values
 

@@ -30,8 +30,8 @@ begin
    opt.fake                = false
    #
    opt.keyname             = ""
-   opt.scanId              = ""
-   opt.civetScanId         = ""
+   opt.scanDate            = ""
+   opt.civetScanDate       = ""
    opt.settingsFile        = ""
    #
    opt.csfPmapVolume       = ""                 # CSF pmap vol for visualization masking
@@ -60,14 +60,14 @@ begin
          puts "** subject keyname: " + opt.keyname if opt.verbose
       end
       
-      opts.on('--scanId scan_date', "Usually a scan date of format YYYYMMDD") do |scanId|
-         opt.scanId = scanId
-         puts "** scan Id: " + opt.scanId if opt.verbose
+      opts.on('--scanDate scan_date', "Usually a scan date of format YYYYMMDD") do |scanDate|
+         opt.scanDate = scanDate
+         puts "** scan Id: " + opt.scanDate if opt.verbose
       end
 
-      opts.on('--civetScanId civet_scan_id', "Usually a scan date of format YYYYMMDD") do |civetScanId|
-         opt.civetScanId = civetScanId
-         puts "** Civet scan date: " + opt.civetScanId if opt.verbose
+      opts.on('--civetscanDate civet_scan_id', "Usually a scan date of format YYYYMMDD") do |civetscanDate|
+         opt.civetScanDate = civetscanDate
+         puts "** Civet scan date: " + opt.civetScanDate if opt.verbose
       end
 
       opts.on('--settingsFile aggregated_settings_file', "Fullpath to the aggregated settings file ") do |settingsFile|
@@ -135,13 +135,11 @@ begin
       exit
    end
    #
-   settings = load_beagle_aggregated_settings(opt.settingsFile, verbose=false, debug=false)
+   settings = load_beagle_aggregated_settings(opt.settingsFile, verbose=opt.verbose, opt.debug=false)
 
    # init associated variables
    LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
    CIVET_VERSION = settings['CIVET_VERSION']
-   CIVET_ROOT_DIR = settings['CIVET_ROOT_DIR']
-   CIVET_PREFIX = settings['CIVET_PREFIX'] + '_'
 
    # set volumetric visualization thresholds
    FDG_SURFACE_VIZ_FLOOR = settings['FDG_SURFACE_VIZ_FLOOR']
@@ -153,21 +151,15 @@ begin
    RATIOS_VOLUME_PATTERN = '*_fdgRatios_noMask.mnc'
 
    # set some useful values/paths
-   if ( settings['CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME'] == 'ON' ) then
-      civetScan_dir = opt.keyname + '-' + opt.civetScanId
-   else
-      civetScan_dir = opt.keyname
-   end 
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
-   #
-   fdg_dir = 'FDG-' + opt.scanId
+   fdg_dir = 'FDG-' + opt.scanDate
    fdg_dir_fullPath = File.join(keyname_dir_fullPath, fdg_dir)
    fdgLogs_dir_fullPath = File.join(fdg_dir_fullPath, 'logs')
    fdgImages_dir_fullPath = File.join(fdg_dir_fullPath, 'images')
    fdgRatios_dir_fullPath = File.join(fdg_dir_fullPath, 'ratios')
    fdgTmp_dir_fullPath = File.join(fdg_dir_fullPath, 'tmp')
    #
-   masks_dir = 'MASKS-' + opt.civetScanId
+   masks_dir = 'masks-' + opt.civetScanDate
    masks_dir_fullPath = File.join(keyname_dir_fullPath, masks_dir)
 
 
@@ -176,14 +168,14 @@ begin
    # * * * * *  START of input argument validation   * * * * *
    #
    # keyname has been entered?
-   if ( opt.keyname.empty? or opt.scanId.empty? ) then
+   if ( opt.keyname.empty? or opt.scanDate.empty? ) then
       puts "\n*** Error: Subject keyname OR FDG scan date is missing"
       puts opts
       exit
    end
 
    # Civet scan date entered?
-   if ( opt.civetScanId.empty? ) then
+   if ( opt.civetScanDate.empty? ) then
       puts "\n*** Error: Civet scan date is missing"
       puts opts
       exit
@@ -214,7 +206,7 @@ begin
    # find all ratio volumes -- must be at least one
     ratio_volumes = match_glob_in_dir(fdgRatios_dir_fullPath, pattern=RATIOS_VOLUME_PATTERN, return_matches=true, verbose=true)
    if ( ratio_volumes.length < 1 ) then
-      puts sprintf("!!! Error: No FDG ratio volumes found for for %s-%s", opt.keyname, opt.scanId)
+      puts sprintf("!!! Error: No FDG ratio volumes found for for %s-%s", opt.keyname, opt.scanDate)
       puts opts
       exit
    end
@@ -232,8 +224,8 @@ begin
    # load subject's master logfile; write a start message
    progname = 'beagle_fdg_surface_visualization'
    logger = BeagleLogger.new(opt.keyname, settings, eraseLog=false)
-   logger.log_start_message(progname, opt.keyname, 'FDG', opt.scanId)
-   logger.log_message(progname, opt.keyname, 'FDG', opt.scanId, 'civet_version', CIVET_VERSION)
+   logger.log_start_message(progname, opt.keyname, 'FDG', opt.scanDate)
+   logger.log_message(progname, opt.keyname, 'FDG', opt.scanDate, 'civet_version', CIVET_VERSION)
 
    # now that we've verified that we have a /logs subdir,
    # ... set processing status to "running"
@@ -395,7 +387,7 @@ begin
    set_job_status(fdgLogs_dir_fullPath, "beagle_fdg_surface_visualization_JobStatus", "finished")
    
    # log a 'done' message to the subject's master logfile, and then write out logfile
-   logger.log_stop_message(progname, opt.keyname, 'FDG', opt.scanId)
+   logger.log_stop_message(progname, opt.keyname, 'FDG', opt.scanDate)
    logger.save_to_file()
 
 rescue RuntimeError => e

@@ -31,7 +31,7 @@ def do_select_subdirs(targetDir_fullPath, debug)
    # set allowable modality types/labels
    # ... these form the first part of the subdir name
    # ... order them according to how you want to see them in the report
-   modalities = ["AAL", "VBM", "THICKNESS", "PiB", "FDG"]
+   modalities = ["AAL", "VBM", "thickness", "PiB", "FDG"]
    
    # put selected subdir names in here
    selected = Array.new
@@ -53,7 +53,7 @@ def do_select_subdirs(targetDir_fullPath, debug)
       if ( subdir_parts.length != 2 )  then next end
       # ... store the parts names
       analysis = subdir_parts[0]
-      scan_id = subdir_parts[1]
+      scanDate = subdir_parts[1]
       
       # is this subdir one of the chosen ones?
       if ( modalities.include? analysis ) then selected.push(subdir) end
@@ -64,7 +64,7 @@ def do_select_subdirs(targetDir_fullPath, debug)
    selected.sort!
    aal_items = selected.grep(/^AAL/)
    vbm_items = selected.grep(/^VBM/)
-   thickness_items = selected.grep(/^THICKNESS/)
+   thickness_items = selected.grep(/^thickness/)
    pib_items = selected.grep(/^PiB/)
    fdg_items = selected.grep(/^FDG/)
    #
@@ -76,11 +76,12 @@ end
 
 
 # perform Sweave processing for a particular chapter/analysis
-def do_sweave(analysis_type, scan_id, template, chapter_number, settings, opt, wrkdir)
+def do_sweave(analysis_type, scanDate, civetScanDate, template, chapter_number, settings, opt, wrkdir)
 
-   if ( 1 == 0 ) then
+   if ( opt.debug ) then
       puts sprintf("Debug: do_sweave: analysis_type = %s", analysis_type)
-      puts sprintf("Debug: do_sweave: scan_id = %s", scan_id)
+      puts sprintf("Debug: do_sweave: scanDate = %s", scanDate)
+      puts sprintf("Debug: do_sweave: civetScanDate = %s", civetScanDate)
       puts sprintf("Debug: do_sweave: template = %s", template)
       puts sprintf("Debug: do_sweave: chapter_number = %s", chapter_number)
       puts sprintf("Debug: do_sweave: settings ...")
@@ -109,7 +110,8 @@ def do_sweave(analysis_type, scan_id, template, chapter_number, settings, opt, w
    args_file.puts sprintf(%|keyname = "#{opt.keyname}"|)
    args_file.puts sprintf(%|rootDir = "#{settings['LORIS_ROOT_DIR']}"|)
    args_file.puts sprintf(%|analysis_type = "#{analysis_type}"|)
-   args_file.puts sprintf(%|scan_id = "#{scan_id}"|)
+   args_file.puts sprintf(%|scan_date = "#{scanDate}"|)
+   args_file.puts sprintf(%|civet_scan_date = "#{civetScanDate}"|)
    args_file.puts sprintf(%|settings_filename = "#{opt.settingsFile}"|)
    args_file.close()
 
@@ -117,6 +119,44 @@ def do_sweave(analysis_type, scan_id, template, chapter_number, settings, opt, w
    cmd = "R CMD Sweave   #{rnw_filename_fullPath}"
    do_cmd(cmd, opt.verbose, opt.fake)
 end
+
+
+# read the *keyname-civetScanDate* string written into each analysis directory
+# return: civetScanDate
+# Example:
+#     civetScanDate = do_getCivetScanDate(keyname:'SP003', modality:'FDG', scanDate:'20141205', settings:settings, opt:opt)
+#
+def do_getCivetScanDate(keyname:, modality:, scanDate:, settings:, opt:)
+   #
+   # craft the fullpath filename of the *civet_scan_id* file
+   filename = 'civet_scan_id.txt'
+   subdir_name = modality + '-' + scanDate
+   filename_fullpath = File.join(settings['LORIS_ROOT_DIR'], keyname, subdir_name, filename)
+   puts filename_fullpath
+
+   if ( !File.exists?(filename_fullpath) || !File.file?(filename_fullpath) ) then
+      puts sprintf('Warning: do_getCivetScanDate(): Passed Civet Id file does not exist: %s\n', filename_fullpath)
+      return false
+   end
+   
+   # open, read, split, close, return civetScanDate
+   civet_id_file_h = File.open(filename_fullpath)
+   civet_id_string = civet_id_file_h.read()
+
+   # split: gotta have 2 parts, with '-' separator
+   civet_id_string_parts = civet_id_string.split('-')
+   if ( civet_id_string_parts.length != 2 )  then
+      puts sprintf('Warning: do_getCivetScanDate(): Invalid Civet Id string found in file: %s\n', filename_fullpath)
+      return false
+   end
+
+   keyname = civet_id_string_parts[0]
+   civetScanDate = civet_id_string_parts[1].strip
+   civet_id_file_h.close()
+   return civetScanDate
+end
+   
+
 
 # start of main script
 begin
@@ -179,14 +219,13 @@ begin
       exit
    end
    #
-   settings = load_beagle_aggregated_settings(opt.settingsFile, verbose=false, debug=false)
+   settings = load_beagle_aggregated_settings(opt.settingsFile, verbose=opt.verbose, debug=opt.debug)
 
 
    # init associated variables
    LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
    LORIS_RESOURCE_DIR = settings['LORIS_RESOURCE_DIR']
    CIVET_VERSION = settings['CIVET_VERSION']
-   CIVET_ROOT_DIR = settings['CIVET_ROOT_DIR']
 
    # set some useful values
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
@@ -249,7 +288,7 @@ begin
    RNW_TEMPLATE_INTRO = settings['RNW_TEMPLATE_INTRO']
    puts "Introduction Sweave template filename: #{RNW_TEMPLATE_INTRO}" if opt.debug
    # perform Sweave processing
-   do_sweave('INTRO', 'dummy', 'RNW_TEMPLATE_INTRO', chapter_number, settings, opt, keynameTmp_dir_fullPath)
+   do_sweave('INTRO', 'dummy', 'dummy', 'RNW_TEMPLATE_INTRO', chapter_number, settings, opt, keynameTmp_dir_fullPath)
    # write an '\input' line to the chapters file
    chapter_file.puts sprintf("\\input\{chapter_#{chapter_number}.tex\}")
 
@@ -259,7 +298,7 @@ begin
    RNW_TEMPLATE_METHODS = settings['RNW_TEMPLATE_METHODS']
    puts "Methods Sweave template filename: #{RNW_TEMPLATE_METHODS}" if opt.debug
    # perform Sweave processing
-   do_sweave('METHODS', 'dummy', 'RNW_TEMPLATE_METHODS', chapter_number, settings, opt, keynameTmp_dir_fullPath)
+   do_sweave('METHODS', 'dummy', 'dummy', 'RNW_TEMPLATE_METHODS', chapter_number, settings, opt, keynameTmp_dir_fullPath)
    # write an '\input' line to the chapters file
    chapter_file.puts sprintf("\\input\{chapter_#{chapter_number}.tex\}")
 
@@ -273,12 +312,15 @@ begin
    selected.each {|subdir|
 
       # split the subdir name, and then store the parts
+      puts("")
       subdir_parts = subdir.split('-')
       analysis = subdir_parts[0]
-      scan_id = subdir_parts[1]
+      scanDate = subdir_parts[1]
+      # default the civetScanDate to the modality scan date ... shall adjust later for functional modalities
+      civetScanDate = scanDate
       
       #
-      puts sprintf("Processing -- Analysis type: %s     Scan date: %s",analysis,scan_id) if opt.debug
+      puts sprintf("Processing -- Analysis type: %s     Scan date: %s",analysis,scanDate) if opt.debug
 
       # increment the chapter number
       # ... this is used to create unique .Rnw/.tex filenames
@@ -291,15 +333,16 @@ begin
          RNW_TEMPLATE_VBM = settings['RNW_TEMPLATE_VBM']
          puts "VBM Sweave template filename: #{RNW_TEMPLATE_VBM}" if opt.debug
          # perform Sweave processing
-         do_sweave(analysis, scan_id, 'RNW_TEMPLATE_VBM', chapter_number, settings, opt, keynameTmp_dir_fullPath)
+         do_sweave(analysis, scanDate, civetScanDate, 'RNW_TEMPLATE_VBM', chapter_number, settings, opt, keynameTmp_dir_fullPath)
          # write an '\input' line to the chapters file
          chapter_file.puts sprintf("\\input\{chapter_#{chapter_number}.tex\}")
 
       when 'PiB'
          RNW_TEMPLATE_PIB = settings['RNW_TEMPLATE_PIB']
          puts "PiB Sweave template filename: #{RNW_TEMPLATE_PIB}" if opt.debug
+         civetScanDate = do_getCivetScanDate(keyname:opt.keyname, modality:analysis, scanDate:scanDate, settings:settings, opt:opt)
          # perform Sweave processing
-         do_sweave(analysis, scan_id, 'RNW_TEMPLATE_PIB', chapter_number, settings, opt, keynameTmp_dir_fullPath)
+         do_sweave(analysis, scanDate, civetScanDate, 'RNW_TEMPLATE_PIB', chapter_number, settings, opt, keynameTmp_dir_fullPath)
          # write an '\input' line to the chapters file
          chapter_file.puts sprintf("\\input\{chapter_#{chapter_number}.tex\}")
 
@@ -307,7 +350,8 @@ begin
          RNW_TEMPLATE_FDG = settings['RNW_TEMPLATE_FDG']
          puts "FDG Sweave template filename: #{RNW_TEMPLATE_FDG}" if opt.debug
          # perform Sweave processing
-         do_sweave(analysis, scan_id, 'RNW_TEMPLATE_FDG', chapter_number, settings, opt, keynameTmp_dir_fullPath)
+         civetScanDate = do_getCivetScanDate(keyname:opt.keyname, modality:analysis, scanDate:scanDate, settings:settings, opt:opt)
+         do_sweave(analysis, scanDate, civetScanDate, 'RNW_TEMPLATE_FDG', chapter_number, settings, opt, keynameTmp_dir_fullPath)
          # write an '\input' line to the chapters file
          chapter_file.puts sprintf("\\input\{chapter_#{chapter_number}.tex\}")
 
@@ -315,15 +359,15 @@ begin
          RNW_TEMPLATE_LABELS = settings['RNW_TEMPLATE_LABELS']
          puts "AAL Sweave template filename: #{RNW_TEMPLATE_LABELS}" if opt.debug
          # perform Sweave processing
-         do_sweave(analysis, scan_id, 'RNW_TEMPLATE_LABELS', chapter_number, settings, opt, keynameTmp_dir_fullPath)
+         do_sweave(analysis, scanDate, civetScanDate, 'RNW_TEMPLATE_LABELS', chapter_number, settings, opt, keynameTmp_dir_fullPath)
          # write an '\input' line to the chapters file
          chapter_file.puts sprintf("\\input\{chapter_#{chapter_number}.tex\}")
 
-      when 'THICKNESS'
+      when 'thickness'
          RNW_TEMPLATE_THICKNESS = settings['RNW_TEMPLATE_THICKNESS']
          puts "Cortical thickness Sweave template filename: #{RNW_TEMPLATE_THICKNESS}" if opt.debug
          # perform Sweave processing
-         do_sweave(analysis, scan_id, 'RNW_TEMPLATE_THICKNESS', chapter_number, settings, opt, keynameTmp_dir_fullPath)
+         do_sweave(analysis, scanDate, civetScanDate, 'RNW_TEMPLATE_THICKNESS', chapter_number, settings, opt, keynameTmp_dir_fullPath)
          # write an '\input' line to the chapters file
          chapter_file.puts sprintf("\\input\{chapter_#{chapter_number}.tex\}")
       else

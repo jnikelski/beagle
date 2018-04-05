@@ -39,9 +39,9 @@ option_list <- list(
          type="character", default=NULL, dest="keyname",
          help="Subject keyname (E.g. \"yueh\")"),
 
-   make_option(c("--scanDate"), 
+   make_option(c("--civetScanDate"), 
          action="store", 
-         type="character", default=NULL, dest="scanId",
+         type="character", default=NULL, dest="civetScanDate",
          help="Civet scan date for subject. (E.g. \"20071009\")"),
                
    make_option(c("--settingsFile"), 
@@ -61,7 +61,8 @@ parser <- OptionParser(usage=header_text, option_list=option_list)
 optX <- parse_args(parser, args=commandArgs(trailingOnly=TRUE), positional_arguments=TRUE)
 
 # ... move options and args into separate, more convenient structures
-opts_in <- optX$options
+opt <- optX$options
+if ( opt$debug) {print(opt)}
 
 # check for the correct number of input volumes
 if ( length(optX$args) > 0 ){
@@ -72,12 +73,12 @@ if ( length(optX$args) > 0 ){
 
 
 #DEBUG ===========================================
-#opts_in <- list()
-#opts_in$verbose <- TRUE
-#opts_in$debug <- TRUE
-#opts_in$keyname <- "yueh"
-#opts_in$scanId <- "20071009"
-#opts_in$settingsFile <- "..."
+#opt <- list()
+#opt$verbose <- TRUE
+#opt$debug <- TRUE
+#opt$keyname <- "yueh"
+#opt$civetScanDate <- "20071009"
+#opt$settingsFile <- "..."
 #
 #
 log_file <- "loggingBySGE"
@@ -102,11 +103,10 @@ library(beagle.statistics)
 
 # read the Loris aggregated settings file (in JSON format)
 #cat(sprintf("BEFORE settings load\n"))
-settings <- read_beagle_aggregated_settings(opts_in$settingsFile, verbose=TRUE)
+settings <- read_beagle_aggregated_settings(opt$settingsFile, verbose=TRUE)
 #cat(sprintf("AFTER settings load\n"))
 
 CIVET_VERSION <- settings$CIVET_VERSION
-CIVET_PREFIX <- paste(settings$CIVET_PREFIX, '_', sep='')
 ELDERLY_MODEL_NUMBER_OF_SUBJECTS <- as.numeric(settings$ELDERLY_MODEL_NUMBER_OF_SUBJECTS)
 ELDERLY_MODEL_DIR <- settings$ELDERLY_MODEL_DIR
 ELDERLY_MODEL_PMAP_MEAN_GRAY_VOLUME <- settings$ELDERLY_MODEL_PMAP_MEAN_GRAY_VOLUME
@@ -119,27 +119,12 @@ VBM_WM_ZSCORE_VOLUME_SUFFIX <- settings$VBM_WM_ZSCORE_VOLUME_SUFFIX
 
 
 # define some useful subdirectories
-opts_in$vbm_dirname <- paste("VBM", opts_in$scanId, sep="-")
+vbm_dirname <- paste("VBM", opt$civetScanDate, sep="-")
 LORIS_ROOT_DIR <- settings$LORIS_ROOT_DIR
-loris_subject_rootDir <- file.path(LORIS_ROOT_DIR, opts_in$keyname)
-vbm_subject_rootDir <- file.path(loris_subject_rootDir, opts_in$vbm_dirname)
+loris_subject_rootDir <- file.path(LORIS_ROOT_DIR, opt$keyname)
+vbm_subject_rootDir <- file.path(loris_subject_rootDir, vbm_dirname)
 vbm_subject_logsDir <- file.path(vbm_subject_rootDir, "logs")
 vbm_subject_imagesDir <- file.path(vbm_subject_rootDir, "images")
-
-
-# civet-related paths
-CIVET_ROOT_DIR <- settings$CIVET_ROOT_DIR
-# set civet scan id -- default to appending 
-CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME <- settings$CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME
-# default to appending scanId (often a date) to the keyname
-opts_in$civetScanId <- paste(opts_in$keyname, opts_in$scanId, sep="-")
-# don't append, just use keyname
-if ( CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME != "ON") {
-      opts_in$civetScanId <- opts_in$keyname
-}
-#
-civetPath_subjectRoot <- file.path(CIVET_ROOT_DIR, opts_in$civetScanId)
-civetPath_subjectVBM <- file.path(civetPath_subjectRoot, "VBM")
 
 
 # set working directory as the VBM subject root dir
@@ -148,16 +133,16 @@ setwd(wrkDir)
 
 
 # load subject's master logfile, and then write a start message
-llogger <- beagle_logger_loadFromFile(opts_in$keyname, settings)
+llogger <- beagle_logger_loadFromFile(opt$keyname, settings)
 progname <- 'beagle_vbm_compute_individ_VBM.Rscript'
-llogger <- beagle_logger_logStartMessage(progname, opts_in$keyname, 'VBM', opts_in$scanId, llogger)
-llogger <- beagle_logger_logMessage(progname, opts_in$keyname, 'VBM',
-                                       opts_in$scanId,
+llogger <- beagle_logger_logStartMessage(progname, opt$keyname, 'VBM', opt$civetScanDate, llogger)
+llogger <- beagle_logger_logMessage(progname, opt$keyname, 'VBM',
+                                       opt$civetScanDate,
                                        'civet_version', CIVET_VERSION,
                                        llogger)
 
 # set the status to "running"
-cat(sprintf("Computing individual VBM results values for %s\n", opts_in$keyname))
+cat(sprintf("Computing individual VBM results values for %s\n", opt$keyname))
 status_filename_running <- "beagle_vbm_compute_individ_VBM_JobStatus.running"
 status_filename_running <- file.path(vbm_subject_logsDir, status_filename_running)
 file.create(status_filename_running)
@@ -175,13 +160,9 @@ stdevGmFilename_fullpath <- file.path(ELDERLY_MODEL_DIR, ELDERLY_MODEL_PMAP_STDE
 print(stdevGmFilename_fullpath)
 stdevGmVol <- mincIO.readVolume(stdevGmFilename_fullpath, volumeType="anatomical")
 
-
 # read in the subject's blurred gray matter volume
-gmFilename <- paste(CIVET_PREFIX, opts_in$civetScanId, "_smooth_8mm_gm.mnc", sep="")
-gmFilename_fullpath <- file.path(civetPath_subjectVBM, gmFilename)
-print(gmFilename_fullpath)
-gmVol <- mincIO.readVolume(gmFilename_fullpath, volumeType="anatomical")
-
+blurred_volumes_fullpath <- civet.getFilenameVbmBlurred(opt$keyname, opt$civetScanDate, settings, opt, fullpath=TRUE, checkExistence=TRUE, symmetrical=FALSE)
+gmVol <- mincIO.readVolume(blurred_volumes_fullpath$gm, volumeType="anatomical")
 
 
 # print the volume ranges before we compute
@@ -242,11 +223,11 @@ range(zVol)
 cat(sprintf("Range of z-score values range after removal of low prob GM voxels is %5.2f : %5.2f\n",
                            range(zVol)[1],
                            range(zVol)[2]))
-llogger <- beagle_logger_logMessage(progname, opts_in$keyname, 'VBM', unlist(strsplit(opts_in$vbm_dirname,'-'))[2], 'gm_zscore_range', range(zVol), llogger)
+llogger <- beagle_logger_logMessage(progname, opt$keyname, 'VBM', unlist(strsplit(vbm_dirname,'-'))[2], 'gm_zscore_range', range(zVol), llogger)
 
 # write out the new z-score volume
 zVol <- mincIO.asVolume(zVol,likeTemplate="icbm152")
-zVolname = paste(opts_in$keyname, VBM_GM_ZSCORE_VOLUME_SUFFIX, '.mnc', sep="")
+zVolname = paste(opt$keyname, VBM_GM_ZSCORE_VOLUME_SUFFIX, '.mnc', sep="")
 zVolname_fullpath <- file.path(vbm_subject_rootDir, zVolname)
 mincIO.writeVolume(zVol, filename=zVolname_fullpath)
 
@@ -256,7 +237,7 @@ mincIO.writeVolume(zVol, filename=zVolname_fullpath)
 
 # visualize the z-score via a histogram
 z.m <- getDataPart(zVol)
-pngFilename <- paste(opts_in$keyname, VBM_GM_ZSCORE_VOLUME_SUFFIX, '_histogram.png', sep="")
+pngFilename <- paste(opt$keyname, VBM_GM_ZSCORE_VOLUME_SUFFIX, '_histogram.png', sep="")
 pngFilenameFullPath <- file.path(vbm_subject_imagesDir, pngFilename)
 png(filename= pngFilenameFullPath, width=800, height=600)
 zScore_plot <- histogram(z.m,
@@ -279,11 +260,9 @@ meanWmVol <- mincIO.readVolume(meanWmFilename_fullpath, volumeType="anatomical")
 stdevWmFilename_fullpath <- file.path(ELDERLY_MODEL_DIR, ELDERLY_MODEL_PMAP_STDEV_WHITE_VOLUME)
 stdevWmVol <- mincIO.readVolume(stdevWmFilename_fullpath, volumeType="anatomical")
 
-
-# read in the subject's blurred gray matter volume
-wmFilename <- paste(CIVET_PREFIX, opts_in$civetScanId, "_smooth_8mm_wm.mnc", sep="")
-wmFilename_fullpath <- file.path(civetPath_subjectVBM, wmFilename)
-wmVol <- mincIO.readVolume(wmFilename_fullpath, volumeType="anatomical")
+# read in the subject's blurred white matter volume
+blurred_volumes_fullpath <- civet.getFilenameVbmBlurred(opt$keyname, opt$civetScanDate, settings, opt, fullpath=TRUE, checkExistence=TRUE, symmetrical=FALSE)
+wmVol <- mincIO.readVolume(blurred_volumes_fullpath$wm, volumeType="anatomical")
 
 
 # print the volume ranges before we compute
@@ -323,12 +302,12 @@ range(zVol)
 cat(sprintf("Range of z-score values range after removal of low prob WM voxels is %5.2f : %5.2f\n",
                            range(zVol)[1],
                            range(zVol)[2]))
-llogger <- beagle_logger_logMessage(progname, opts_in$keyname, 'VBM', unlist(strsplit(opts_in$vbm_dirname,'-'))[2], 'wm_zscore_range', range(zVol), llogger)
+llogger <- beagle_logger_logMessage(progname, opt$keyname, 'VBM', unlist(strsplit(vbm_dirname,'-'))[2], 'wm_zscore_range', range(zVol), llogger)
 
 
 # write out the new z-score volume
 zVol <- mincIO.asVolume(zVol,likeTemplate="icbm152")
-zVolname = paste(opts_in$keyname, VBM_WM_ZSCORE_VOLUME_SUFFIX, '.mnc', sep="")
+zVolname = paste(opt$keyname, VBM_WM_ZSCORE_VOLUME_SUFFIX, '.mnc', sep="")
 zVolname_fullpath <- file.path(vbm_subject_rootDir, zVolname)
 mincIO.writeVolume(zVol, filename=zVolname_fullpath)
 
@@ -336,7 +315,7 @@ mincIO.writeVolume(zVol, filename=zVolname_fullpath)
 
 # visualize the z-score via a histogram
 z.m <- getDataPart(zVol)
-pngFilename <- paste(opts_in$keyname, VBM_WM_ZSCORE_VOLUME_SUFFIX, '_histogram.png', sep="")
+pngFilename <- paste(opt$keyname, VBM_WM_ZSCORE_VOLUME_SUFFIX, '_histogram.png', sep="")
 pngFilenameFullPath <- file.path(vbm_subject_imagesDir, pngFilename)
 png(filename= pngFilenameFullPath, width=800, height=600)
 zScore_plot <- histogram(z.m,
@@ -361,8 +340,8 @@ file.rename(status_filename_running, status_filename_finished)
 
 
 # log a 'done' message to the subject's master logfile, and then write out logfile
-llogger <- beagle_logger_logStopMessage(progname, opts_in$keyname, 'VBM', opts_in$scanId, llogger)
-beagle_logger_saveToFile(opts_in$keyname, llogger, settings)
+llogger <- beagle_logger_logStopMessage(progname, opt$keyname, 'VBM', opt$civetScanDate, llogger)
+beagle_logger_saveToFile(opt$keyname, llogger, settings)
 
 
 

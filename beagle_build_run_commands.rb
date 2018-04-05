@@ -27,7 +27,7 @@ end
 def buildCmd_beagle_anatomical_initialization(scan_item, opt, settings, verbose=false, debug=false)
    cmd = "beagle_anatomical_initialization   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
-   cmd << "--civetscanDate #{scan_item['civetScanDate']} "
+   cmd << "--civetScanDate #{scan_item['civetScanDate']} "
    cmd << "--settingsFile #{opt.settingsFile} "
    return cmd
 end  
@@ -62,7 +62,7 @@ def buildCmd_beagle_masks_generate_from_labels(scan_item, opt, settings, verbose
    cmd << "--labelledAALvolume #{loris_labelled_volname_fullPath} "
    
    # get the Civet-generated tissue classification volume name
-   if !civet_classify_volname_fullPath=civet_getFilenameGrayMatterPve(scan_item["keyname"], scan_item["civetScanDate"], settings, opt, checkExistence=true) then exit end
+   if !civet_classify_volname_fullPath=civet_getFilenameClassify(civet_keyname:scan_item["keyname"], civet_scanid:scan_item["civetScanDate"], settings:settings, opt:opt) then exit end
    cmd << "--classifyVolume #{civet_classify_volname_fullPath} "
    cmd << "--settingsFile #{opt.settingsFile} "
    return cmd
@@ -118,7 +118,7 @@ def buildCmd_beagle_vbm_volumetric_visualization(scan_item, opt, settings, verbo
    cmd << "--settingsFile #{opt.settingsFile} "
    
    # t1 anatomical underlay volume
-   if !t1Volume_fullPath=civet_getFilenameStxT1(scan_item["keyname"], scan_item["civetScanDate"], settings, opt, checkExistence=true) then exit end
+   if !t1Volume_fullPath=civet_getFilenameStxT1(civet_keyname:scan_item["keyname"], civet_scanid:scan_item["civetScanDate"], settings:settings, opt:opt) then exit end
    cmd << "--t1UnderlayVol #{t1Volume_fullPath} "
    
    # GM z-score volume
@@ -145,7 +145,7 @@ def buildCmd_beagle_thickness_compute_zscores(scan_item, opt, settings, verbose=
    cmd << "--settingsFile #{opt.settingsFile} "
    
    # CTA input vector files (left and right hemispheres) from Civet
-   civet_thickness_lh, civet_thickness_rh = civet_getFilenameCorticalThickness(scan_item["keyname"], scan_item["civetScanDate"], settings, opt, checkExistence=true, resampled=true)
+   civet_thickness_lh, civet_thickness_rh = civet_getFilenameCorticalThickness(civet_keyname:scan_item["keyname"], civet_scanid:scan_item["civetScanDate"], settings:settings, opt:opt, resampled:true)
    cmd << "--lhThicknessVectorFile #{civet_thickness_lh}  "
    cmd << "--rhThicknessVectorFile #{civet_thickness_rh}  "
    return cmd
@@ -160,7 +160,7 @@ def buildCmd_beagle_thickness_extract_surface_labels(scan_item, opt, settings, v
    cmd << "--settingsFile #{opt.settingsFile} "
 
    # set surface object filenames
-   civet_surfaceLh, civet_surfaceRh = civet_getFilenameMidSurfaces(scan_item["keyname"], scan_item['civetScanDate'], settings, opt, checkExistence=true, resampled=false)
+   civet_surfaceLh, civet_surfaceRh = civet_getFilenameMidSurfaces(civet_keyname:scan_item["keyname"], civet_scanid:scan_item['civetScanDate'], settings:settings, opt:opt, resampled:false)
    cmd << "--surfaceLh #{civet_surfaceLh}  "
    cmd << "--surfaceRh #{civet_surfaceRh}  "
    
@@ -185,7 +185,7 @@ def buildCmd_beagle_thickness_compute_roi_statistics(scan_item, opt, settings, v
    
    # define some handy paths
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], scan_item['keyname'])
-   cta_dir = 'THICKNESS-' + scan_item['civetScanDate']
+   cta_dir = 'thickness-' + scan_item['civetScanDate']
    cta_dir_fullPath = File.join(keyname_dir_fullPath, cta_dir)
 
    cmd = "beagle_thickness_compute_roi_statistics.Rscript   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
@@ -234,7 +234,7 @@ def buildCmd_beagle_thickness_surface_visualization(scan_item, opt, settings, ve
    cmd << "--avgRhSurface #{adni_rh_gm_surface_fullpath}  "
    
    # individual surfaces -- LH/RH
-   individ_lh_gm_surface, individ_rh_gm_surface = civet_getFilenameGrayMatterSurfaces(scan_item["keyname"], scan_item['civetScanDate'], settings, opt, checkExistence=true, resampled=false)
+   individ_lh_gm_surface, individ_rh_gm_surface = civet_getFilenameGrayMatterSurfaces(civet_keyname:scan_item["keyname"], civet_scanid:scan_item['civetScanDate'], settings:settings, opt:opt, resampled:false)
    cmd << "--indivLhSurface #{individ_lh_gm_surface}  "   
    cmd << "--indivRhSurface #{individ_rh_gm_surface}  "
 
@@ -338,13 +338,13 @@ def buildCmd_beagle_pib_volumetric_visualization(scan_item, opt, settings, verbo
    
    # gray matter mask volume
    derived_gm_mask_volume = 'wholeBrain_gray_matter_mask.mnc'
-   masks_dir = 'MASKS-' + scan_item['civetScanDate']
+   masks_dir = 'masks-' + scan_item['civetScanDate']
    masks_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], scan_item['keyname'], masks_dir)
    gmMaskVol_fullPath = File.join(masks_dir_fullPath, derived_gm_mask_volume)
    cmd << "--gmMaskVol #{gmMaskVol_fullPath} "                 
    
    # t1 anatomical underlay volume
-   if !t1Volume_fullPath = civet_getFilenameStxT1(scan_item['keyname'], scan_item['civetScanDate'], settings, opt, checkExistence=true) then exit end
+   if !t1Volume_fullPath = civet_getFilenameStxT1(civet_keyname:scan_item['keyname'], civet_scanid:scan_item['civetScanDate'], settings:settings, opt:opt) then exit end
    cmd << "--t1UnderlayVol #{t1Volume_fullPath} "
    return cmd
 end  
@@ -372,7 +372,7 @@ def buildCmd_beagle_pib_surface_visualization(scan_item, opt, settings, verbose=
    cmd << "--avgRhSurface #{adni_rh_gm_surface_fullpath}  "
 
    # individual surfaces -- LH/RH
-   indivLhSurface, indivRhSurface = civet_getFilenameGrayMatterSurfaces(scan_item['keyname'], scan_item['civetScanDate'], settings, opt, checkExistence=true, resampled=false)
+   indivLhSurface, indivRhSurface = civet_getFilenameGrayMatterSurfaces(civet_keyname:scan_item['keyname'], civet_scanid:scan_item['civetScanDate'], settings:settings, opt:opt, resampled:false)
    cmd << "--indivLhSurface #{indivLhSurface}  "   
    cmd << "--indivRhSurface #{indivRhSurface}  "
    return cmd
@@ -463,7 +463,6 @@ end
 
 
 def buildCmd_beagle_fdg_compute_SUVR(scan_item, opt, settings, verbose=false, debug=false)
-
    cmd = "beagle_fdg_compute_SUVR.Rscript   ";cmd << (opt.verbose ? "-v " : "");cmd << (opt.debug ? "-d " : "")
    cmd << "--keyname #{scan_item['keyname']} "
    cmd << "--scanDate #{scan_item['scanDate']} "
@@ -482,13 +481,13 @@ def buildCmd_beagle_fdg_volumetric_visualization(scan_item, opt, settings, verbo
    
    # gray matter mask volume
    derived_gm_mask_volume = 'wholeBrain_gray_matter_mask.mnc'
-   masks_dir = 'MASKS-' + scan_item['civetScanDate']
+   masks_dir = 'masks-' + scan_item['civetScanDate']
    masks_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], scan_item['keyname'], masks_dir)
    gmMaskVol_fullPath = File.join(masks_dir_fullPath, derived_gm_mask_volume)
    cmd << "--gmMaskVol #{gmMaskVol_fullPath} "                 
    
    # t1 anatomical underlay volume
-   if !t1Volume_fullPath = civet_getFilenameStxT1(scan_item['keyname'], scan_item['civetScanDate'], settings, opt, checkExistence=true) then exit end
+   if !t1Volume_fullPath = civet_getFilenameStxT1(civet_keyname:scan_item['keyname'], civet_scanid:scan_item['civetScanDate'], settings:settings, opt:opt) then exit end
    cmd << "--t1UnderlayVol #{t1Volume_fullPath} "
    return cmd
 end  
@@ -522,7 +521,7 @@ def buildCmd_beagle_fdg_surface_visualization(scan_item, opt, settings, verbose=
    cmd << "--avgRhSurface #{adni_rh_gm_surface_fullpath}  "
 
    # individual surfaces -- LH/RH
-   indivLhSurface, indivRhSurface = civet_getFilenameGrayMatterSurfaces(scan_item['keyname'], scan_item['civetScanDate'], settings, opt, checkExistence=true, resampled=true)
+   indivLhSurface, indivRhSurface = civet_getFilenameGrayMatterSurfaces(civet_keyname:scan_item['keyname'], civet_scanid:scan_item['civetScanDate'], settings:settings, opt:opt, resampled:false)
    cmd << "--indivLhSurface #{indivLhSurface}  "   
    cmd << "--indivRhSurface #{indivRhSurface}  "
    return cmd

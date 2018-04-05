@@ -10,12 +10,21 @@
 # since he wrote this code ... and is therefore likely to know how to
 # modify these parameters safely.
 #
-# NOTE:
+# NOTE 1:
 #     This file is read by 2 separate read routines - one written
 #     in Ruby, and the other written in R. Before you even start
 #     considering changing the format of this file, make sure that
 #     the modified format is readable by the read routines in
 #     *both* languages.
+#
+# NOTE 2:
+#     The R settings are read by a couple of functions within the  *beagle.statistics* package:
+#     1. read_beagle_settings() -- this function reads the settings file in the simple format of THIS FILE. 
+#                                  That is, it's full of key-value pairs, using an "=" as a separator.
+#     2. read_beagle_aggregated_settings() -- this function reads the *previously written out* aggregated 
+#                                  settings file in JSON format.
+#
+#     3. Be sure to use the correct function for the file.
 #
 #  YET ANOTHER NOTE:
 #     OK, I just got bitten by this. Make sure *not* to use any
@@ -67,7 +76,7 @@ CIVET_ROOT_DIR="/data/raid01/civetData/civetVersion_1.1.11/scans"
 #CIVET_PREFIX="ADNI"
 CIVET_PREFIX="HCLab"
 
-# append scanDate to subject's keyname to create scanID (used for subject directory naming)
+# append scanDate to subject's keyname to create scanID (used for subject directory naming) -- ON/OFF
 #CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME="OFF"
 CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME="ON"
 

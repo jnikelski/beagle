@@ -5,9 +5,10 @@ library(beagle.statistics)
 # read passed arguments from args file
 # (1) keyname           [ e.g., tofty]
 # (2) rootDir           [ the Loris output root, containing all keyname subdirs]
-# (3) analysis_type     [ VBM, PiB, FDG, THICKNESS, etc ... must match subdir prefix]
-# (4) scan_id         [ YYYYMMDD ... must match subdir suffix]
-# (5) settings_filename [ fullpath to the aggregated settings file]
+# (3) analysis_type     [ VBM, PiB, FDG, thickness, etc ... must match subdir prefix]
+# (4) scan_date         [ YYYYMMDD ]
+# (5) civet_scan_date   [ YYYYMMDD ]
+# (6) settings_filename [ fullpath to the aggregated settings file]
 #
 source("args_file.txt")
 
@@ -17,20 +18,17 @@ settings <- read_beagle_aggregated_settings(settings_filename, verbose=FALSE)
 
 
 # construct useful filename
-fdg_subdir <- paste(analysis_type, scan_id, sep="-")
+fdg_subdir <- paste(analysis_type, scan_date, sep="-")
 fdg_subdir_fullPath <- file.path(rootDir, keyname, fdg_subdir)
 fdg_images_subdir_fullPath <- file.path(fdg_subdir_fullPath, 'images')
 fdg_tal_subdir_fullPath <- file.path(fdg_subdir_fullPath, 'tal')
 fdg_ratios_subdir_fullPath <- file.path(fdg_subdir_fullPath, 'ratios')
 
 
-# read the scan id for the associated anatomy from the "civet_scan_id.txt" file
-# that has cleverly been placed in the modality root dir
-civet_scanId_filename_fullpath <-file.path(fdg_subdir_fullPath, "civet_scan_id.txt")
-civet_scan_id <- read.csv(civet_scanId_filename_fullpath, header=FALSE, stringsAsFactors=FALSE)[1,1]
-# now create a pleasing full subdir path
-masks_dirname <- paste('MASKS-', civet_scan_id, sep="")
+# now create a pleasing full subdir path to the Beagle *subject/masks-19000000* directory
+masks_dirname <- paste('masks', civet_scan_date, sep="-")
 masks_subdir_fullPath <- file.path(rootDir, keyname, masks_dirname)
+
 
 # read the fdg volume name ... and then get some stuff
 #fdg_volname <- paste(keyname, "_talAligned.mnc", sep="")
@@ -48,7 +46,7 @@ cerebellar_gm_mask_filename_fullPath <- file.path(masks_subdir_fullPath, cerebel
 cerebellar_gm_mask <- mincIO.readVolume(cerebellar_gm_mask_filename_fullPath, volumeType='mask')
 cerebellar_gm_mask_nVoxels <- sum(cerebellar_gm_mask)
 #
-# read the attenuated cerebellar GM mask --- will be fewer voxels, if cerebellum truncated 
+# read the attenuated cerebellar GM mask (from Beagle output) --- will be fewer voxels, if cerebellum truncated 
 fdgMasks_subdir_fullPath <- file.path(fdg_subdir_fullPath, 'masks')
 fdgAttenuated_cerebellar_gm_mask_filename <- paste(keyname, "_binarized_masked_fdgVol.mnc", sep="")
 fdgAttenuated_cerebellar_gm_mask_filename_fullPath <- file.path(fdgMasks_subdir_fullPath, fdgAttenuated_cerebellar_gm_mask_filename)
@@ -76,8 +74,8 @@ img_reference_volumetricViz_fullPath = file.path(fdg_images_subdir_fullPath, img
 @
 
 
-\chapter{Findings: \texttt{FDG-\Sexpr{scan_id}}}
-In this chapter, we present the findings of the fluorodeoxyglucose (FDG) image analysis of subject \texttt{\Sexpr{keyname}}, based on the dynamic scan acquired on \texttt{\Sexpr{scan_id}}.
+\chapter{Findings: \texttt{FDG-\Sexpr{scan_date}}}
+In this chapter, we present the findings of the fluorodeoxyglucose (FDG) image analysis of subject \texttt{\Sexpr{keyname}}, based on the dynamic scan acquired on \texttt{\Sexpr{scan_date}}.
 
 \section{Validation}
 While there are probably countless things that one could validate, there are a couple of things to check that will likely cover most of the things that could go wrong: (1) in-scanner subject misalignment, and (2) missing or partically missing cerebellum (i.e. not in the scanner's field of view).

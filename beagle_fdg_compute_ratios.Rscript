@@ -38,14 +38,14 @@ option_list <- list(
          type="character", default=NULL, dest="keyname",
          help="Subject keyname (E.g. \"yueh\")"),
                
-   make_option(c("--scanId"), 
+   make_option(c("--scanDate"), 
          action="store", 
-         type="character", default=NULL, dest="scanId",
+         type="character", default=NULL, dest="scanDate",
          help="FDG scan Id for subject. (E.g. \"20071009\")"),
 
-   make_option(c("--civetScanId"), 
+   make_option(c("--civetScanDate"), 
          action="store", 
-         type="character", default=NULL, dest="civetScanId",
+         type="character", default=NULL, dest="civetScanDate",
          help="Civet scan date for subject. (E.g. \"20071009\")"),
                
    make_option(c("--settingsFile"), 
@@ -53,7 +53,7 @@ option_list <- list(
          type="character", default=NULL, dest="settingsFile",
          help="Fullpath to the aggregated settings file")
 )
-#
+
 #
 # ... create the parser, and then parse the command line
 header_text <- paste(usage_text, description_text, sep="")
@@ -61,7 +61,7 @@ parser <- OptionParser(usage=header_text, option_list=option_list)
 optX <- parse_args(parser, args=commandArgs(trailingOnly=TRUE), positional_arguments=TRUE)
 
 # ... move options and args into separate, more convenient structures
-O <- optX$options
+opt <- optX$options
 
 # check for the correct number of input volumes
 if ( length(optX$args) > 0 ){
@@ -73,12 +73,13 @@ if ( length(optX$args) > 0 ){
 
 
 #DEBUG ===========================================
-#O$ <- list()
-#O$verbose <- TRUE
-#O$debug <- TRUE
-#O$keyname <- "fenrir"
-#O$scanId <- "20071009"
-#O$settingsFile <- "..."
+#opt$ <- list()
+#opt$verbose <- TRUE
+#opt$debug <- TRUE
+#opt$keyname <- "fenrir"
+#opt$scanDate <- "20071009"
+#opt$civetScanDate <- "20071009"
+#opt$settingsFile <- "..."
 #
 log_file <- "loggingBySGE"
 #DEBUG ===========================================
@@ -102,18 +103,18 @@ library(beagle.statistics)
 
 
 # read the Loris aggregated settings file (in JSON format)
-#cat(sprintf("BEFORE settings load\n"))
-settings <- read_beagle_aggregated_settings(O$settingsFile, verbose=TRUE)
-#cat(sprintf("AFTER settings load\n"))
+cat(sprintf("BEFORE settings load\n"))
+settings <- read_beagle_aggregated_settings(opt$settingsFile, verbose=opt$verbose)
+cat(sprintf("AFTER settings load\n"))
 
 
 
 # define some useful subdirectories
 LORIS_ROOT_DIR <- settings$LORIS_ROOT_DIR
-keyname_dir_fullPath <- file.path(LORIS_ROOT_DIR, O$keyname)
+keyname_dir_fullPath <- file.path(LORIS_ROOT_DIR, opt$keyname)
 
 # FDG-related paths
-fdgWorkingDir <- paste("FDG", O$scanId, sep="-")
+fdgWorkingDir <- paste("FDG", opt$scanDate, sep="-")
 fdgDir <- file.path(keyname_dir_fullPath, fdgWorkingDir)
 fdgDir_ratios <- file.path(fdgDir, "ratios")
 fdgDir_logs <- file.path(fdgDir, "logs")
@@ -122,25 +123,11 @@ fdgDir_masks <- file.path(fdgDir, "masks")
 fdgDir_tal <- file.path(fdgDir, "tal")
 
 # MASKS-related paths
-masks_dirname <- paste("MASKS", O$civetScanId, sep="-")
+masks_dirname <- paste("masks", opt$civetScanDate, sep="-")
 masksDir <- file.path(keyname_dir_fullPath, masks_dirname)
 
-# civet-related paths
+# civet-related variables
 CIVET_VERSION <- settings$CIVET_VERSION
-CIVET_PREFIX <- paste(settings$CIVET_PREFIX, '_', sep='')
-CIVET_ROOT_DIR <- settings$CIVET_ROOT_DIR
-
-# set civet scan id -- default to appending 
-CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME <- settings$CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME
-civetScanDir <- paste(O$keyname, O$civetScanId, sep="-")
-# don't append, just use keyname
-if ( CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME != "ON") {
-      civetScanDir <- O$keyname
-}
-#
-civet_subject_rootDir <- file.path(CIVET_ROOT_DIR, civetScanDir)
-
-
 
 # set some useful constants
 FDG_VOLUME_SUFFIX <- "_talAligned_06mmBlur.mnc"
@@ -158,17 +145,17 @@ setwd(wrkDir)
 
 
 # load subject's master logfile, and then write a start message
-llogger <- beagle_logger_loadFromFile(O$keyname, settings)
+llogger <- beagle_logger_loadFromFile(opt$keyname, settings)
 progname <- 'beagle_fdg_compute_ratios.Rscript'
-llogger <- beagle_logger_logStartMessage(progname, O$keyname, 'FDG', O$scanId, llogger)
-llogger <- beagle_logger_logMessage(progname, O$keyname, 'FDG',
-                                       O$scanId,
+llogger <- beagle_logger_logStartMessage(progname, opt$keyname, 'FDG', opt$scanDate, llogger)
+llogger <- beagle_logger_logMessage(progname, opt$keyname, 'FDG',
+                                       opt$scanDate,
                                        'civet_version', CIVET_VERSION,
                                        llogger)
 
 
 # set the status to "running"
-cat(sprintf("Generating an FDG ratio volume for %s\n", O$scanId))
+cat(sprintf("Generating an FDG ratio volume for %s\n", opt$scanDate))
 status_filename_running <- "beagle_fdg_compute_ratios_JobStatus.running"
 status_filename_running <- file.path(fdgDir_logs, status_filename_running)
 file.create(status_filename_running)
@@ -177,13 +164,13 @@ file.create(status_filename_running)
 # read masked FDG volume (e.g. "aragorn_binarized_masked_fdgVol.mnc")
 # ... this should be a subset of the full cerebellar GM mask, taking 
 # ... cerebellar trucation (due to acquisition error) into account
-filename <- paste(O$keyname, BINARIZED_MASKED_FDGVOL_SUFFIX, sep="")
+filename <- paste(opt$keyname, BINARIZED_MASKED_FDGVOL_SUFFIX, sep="")
 cerebGM_mask_volname <- file.path(fdgDir_masks, filename)
 cerebGM_mask_vol <- mincIO.readVolume(cerebGM_mask_volname, volumeType="mask")
 
 
 # get the actual (blurred) FDG volume
-filename <- paste(O$keyname, FDG_VOLUME_SUFFIX, sep="")
+filename <- paste(opt$keyname, FDG_VOLUME_SUFFIX, sep="")
 fdg_volname <- file.path(fdgDir_tal, filename)
 fdg_vol <- mincIO.readVolume(fdg_volname, volumeType="functional")
 
@@ -200,7 +187,7 @@ cereb_vec_mean <- mean(cereb_vec)
 fdg_ratio_vol <- fdg_vol / cereb_vec_mean
 
 # write out the ratio volume and then term.
-filename <- file.path(fdgDir_ratios, paste(O$keyname, "_fdgRatios_noMask.mnc", sep=""))
+filename <- file.path(fdgDir_ratios, paste(opt$keyname, "_fdgRatios_noMask.mnc", sep=""))
 mincIO.writeVolume(fdg_ratio_vol, filename, clobber=TRUE)
 
 
@@ -209,7 +196,7 @@ mincIO.writeVolume(fdg_ratio_vol, filename, clobber=TRUE)
 # ... read the gray matter mask
 gm_mask_vol <- mincIO.readVolume(GM_MASK_VOLNAME_FULLPATH, volumeType="mask")
 fdg_ratio_vol <- fdg_ratio_vol * gm_mask_vol
-filename <- file.path(fdgDir_ratios, paste(O$keyname, "_fdgRatios_gmMask.mnc", sep=""))
+filename <- file.path(fdgDir_ratios, paste(opt$keyname, "_fdgRatios_gmMask.mnc", sep=""))
 mincIO.writeVolume(fdg_ratio_vol, filename, clobber=TRUE)
 
 
@@ -224,11 +211,11 @@ status_filename_finished <- file.path(fdgDir_logs, status_filename_finished)
 file.rename(status_filename_running, status_filename_finished)
 
 # log a 'done' message to the subject's master logfile, and then write out logfile
-llogger <- beagle_logger_logStopMessage(progname, O$keyname, 'FDG', O$scanId, llogger)
-beagle_logger_saveToFile(O$keyname, llogger, settings)
+llogger <- beagle_logger_logStopMessage(progname, opt$keyname, 'FDG', opt$scanDate, llogger)
+beagle_logger_saveToFile(opt$keyname, llogger, settings)
 
 # print the log entries (for fun)
-logger.df <- beagle_logger_loadFromFileAsDataFrame(O$keyname, settings)
+logger.df <- beagle_logger_loadFromFileAsDataFrame(opt$keyname, settings)
 options(width=9999)
 print(logger.df)
 

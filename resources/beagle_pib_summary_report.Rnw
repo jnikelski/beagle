@@ -6,8 +6,9 @@ library(beagle.statistics)
 # (1) keyname           [ e.g., tofty]
 # (2) rootDir           [ the Loris output root, containing all keyname subdirs]
 # (3) analysis_type     [ VBM, PiB, FDG, THICKNESS, etc ... must match subdir prefix]
-# (4) scan_id           [ YYYYMMDD ... must match subdir suffix]
-# (5) settings_filename [ fullpath to the aggregated settings file]
+# (4) scan_date         [ YYYYMMDD ]
+# (5) civet_scan_date   [ YYYYMMDD ]
+# (6) settings_filename [ fullpath to the aggregated settings file]
 #
 source("args_file.txt")
 
@@ -25,7 +26,7 @@ refTissue_mask_filename <- paste(keyname, "cerebGMmask_maskedBy_meanPibActivity.
 
 
 # construct useful filename
-pib_subdir <- paste(analysis_type, scan_id, sep="-")
+pib_subdir <- paste(analysis_type, scan_date, sep="-")
 pib_subdir_fullPath <- file.path(rootDir, keyname, pib_subdir)
 pib_images_subdir_fullPath <- file.path(pib_subdir_fullPath, 'images')
 pib_tal_subdir_fullPath <- file.path(pib_subdir_fullPath, 'tal')
@@ -33,12 +34,8 @@ pib_ratios_subdir_fullPath <- file.path(pib_subdir_fullPath, 'ratios')
 pib_masks_subdir_fullPath <- file.path(pib_subdir_fullPath, 'masks')
 
 
-# read the scan id for the associated anatomy from the "civet_scan_id.txt" file
-# that has cleverly been placed in the modality root dir
-civet_scanId_filename_fullpath <-file.path(pib_subdir_fullPath, "civet_scan_id.txt")
-civet_scan_id <- read.csv(civet_scanId_filename_fullpath, header=FALSE, stringsAsFactors=FALSE)[1,1]
-# now create a pleasing full subdir path
-masks_dirname <- paste('MASKS', civet_scan_id, sep="-")
+# now create a pleasing full subdir path to the root masks-000000 directory
+masks_dirname <- paste('masks', civet_scan_date, sep="-")
 masks_subdir_fullPath <- file.path(rootDir, keyname, masks_dirname)
 
 
@@ -90,8 +87,8 @@ img_reference_volumetricViz_fullPath = file.path(pib_images_subdir_fullPath, img
 @
 
 
-\chapter{Findings: \texttt{PiB-\Sexpr{scan_id}}}
-In this chapter, we present the findings of the amyloid imaging analysis of subject \texttt{\Sexpr{keyname}}, based on the dynamic scan acquired on \texttt{\Sexpr{scan_id}}. Subject \texttt{\Sexpr{keyname}'s} scan resulted in the acquisition of \textbf{\Sexpr{nFrames}} frames.
+\chapter{Findings: \texttt{PiB-\Sexpr{scan_date}}}
+In this chapter, we present the findings of the amyloid imaging analysis of subject \texttt{\Sexpr{keyname}}, based on the dynamic scan acquired on \texttt{\Sexpr{scan_date}}. Subject \texttt{\Sexpr{keyname}'s} scan resulted in the acquisition of \textbf{\Sexpr{nFrames}} frames.
 
 \section{Validation}
 While there are probably countless things that one could validate, there are a couple of things to check that will likely cover most of the things that could go wrong: (1) in-scanner subject misalignment, and (2) other acquistion-related problems such as early scan termination or injection of a low-potency PiB bolus.

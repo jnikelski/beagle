@@ -19,6 +19,7 @@ require 'pp'
 # load external dependencies
 require 'hclab_function_library'
 require 'beagle_function_library'
+require 'beagle_civet_function_library'
 require 'beagle_logger_classes'
 
 # start of main script
@@ -27,8 +28,8 @@ begin
    opt.verbose             = false
    opt.debug               = false
    opt.keyname             = ""
-   opt.scanId              = ""
-   opt.civetScanId         = ""
+   opt.scanDate            = ""
+   opt.civetScanDate       = ""
    opt.settingsFile        = ""
 
    # List of arguments.
@@ -46,14 +47,14 @@ begin
          puts "** keyname: " + opt.keyname if opt.verbose
       end
 
-      opts.on('--scanId pib_scan_id', "Usually a scan date of format YYYYMMDD") do |scanId|
-         opt.scanId = scanId
-         puts "** scan date: " + opt.scanId if opt.verbose
+      opts.on('--scanDate pib_scan_date', "Usually a scan date of format YYYYMMDD") do |scanDate|
+         opt.scanDate = scanDate
+         puts "** PiB scan date: " + opt.scanDate if opt.verbose
       end
 
-      opts.on('--civetScanId civet_scan_id', "Usually a scan date of format YYYYMMDD") do |civetScanId|
-         opt.civetScanId = civetScanId
-         puts "** Civet scan Id: " + opt.civetScanId if opt.verbose
+      opts.on('--civetScanDate civet_scan_date', "Usually a scan date of format YYYYMMDD") do |civetScanDate|
+         opt.civetScanDate = civetScanDate
+         puts "** Civet scan date: " + opt.civetScanDate if opt.verbose
       end
 
       opts.on('--settingsFile aggregated_settings_file', "Fullpath to the aggregated settings file ") do |settingsFile|
@@ -96,43 +97,22 @@ begin
    # init associated variables
    LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
    CIVET_VERSION = settings['CIVET_VERSION']
-   CIVET_ROOT_DIR = settings['CIVET_ROOT_DIR']
-   
-   CIVET_PREFIX = settings['CIVET_PREFIX'] + '_'
-   CIVET_FINAL_T1_VOLUME_SUFFIX = settings['CIVET_FINAL_T1_VOLUME_SUFFIX']
-   CIVET_SURFACE_GRAY_LEFT_SUFFIX = settings['CIVET_SURFACE_GRAY_LEFT_SUFFIX']
-   CIVET_SURFACE_GRAY_RIGHT_SUFFIX = settings['CIVET_SURFACE_GRAY_RIGHT_SUFFIX']
 
 
    # set some useful values
    #
    # are we going to use scan date to access the Civet output files/directories?
-   if ( settings['CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME'] == 'ON' ) then
-      civetScan_dir = opt.keyname + '-' + opt.civetScanId
-   else
-      civetScan_dir = opt.keyname
-   end
-   
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
-   pibScan_dir = 'PiB-' + opt.scanId
+   pibScan_dir = 'PiB-' + opt.scanDate
 
-
-   # check Civet ID directory ... just make sure it's there, and then
-   # ... create sub-directories, as required
-   civetId_dir_fullPath = File.join(CIVET_ROOT_DIR, civetScan_dir)
-   if ( !File.exists?(civetId_dir_fullPath) || !File.directory?(civetId_dir_fullPath) ) then
-      puts sprintf("\n!!! Error: Civet validation error for scan %s", opt.civetScanId)
-      puts sprintf("Civet ID subdirectory [%s] does not exist", civetId_dir_fullPath)
-      exit
-   end
-
-
+   # check Civet ID directory ... just make sure it's there
+   civetId_dir_fullPath = civet_getScanDirectoryName(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt, fullpath:true, checkExistence:true)
+   
    # load subject's master logfile; write a start message
    progname = 'beagle_pib_initialization'
    logger = BeagleLogger.new(opt.keyname, settings, eraseLog=false)
-   logger.log_start_message(progname, opt.keyname, 'PiB', opt.scanId)
-   logger.log_message(progname, opt.keyname, 'PiB', opt.scanId, 'civet_version', CIVET_VERSION)
-
+   logger.log_start_message(progname, opt.keyname, 'PiB', opt.scanDate)
+   logger.log_message(progname, opt.keyname, 'PiB', opt.scanDate, 'civet_version', CIVET_VERSION)
 
 
    # new create PiB-related subdirs within this directory
@@ -144,7 +124,8 @@ begin
       Dir.mkdir(pibScan_dir_fullPath)
    end
    # write ID of associated anatomical scan into the directory
-   File.open(File.join(pibScan_dir_fullPath,'civet_scan_id.txt'), 'w') {|f| f.write("#{opt.civetScanId}\n");f.close}
+   civetScanDirectoryName = civet_getScanDirectoryName(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt)
+   File.open(File.join(pibScan_dir_fullPath,'civet_scan_id.txt'), 'w') {|f| f.write("#{civetScanDirectoryName}\n");f.close}
 
    # create subdirs
    filename = File.join(pibScan_dir_fullPath, "native")
@@ -175,7 +156,7 @@ begin
    if !File.exists?( filename ) then FileUtils.mkdir( filename ) end
 
    # log a 'done' message to the subject's master logfile, and then write out logfile
-   logger.log_stop_message(progname, opt.keyname, 'PiB', opt.scanId)
+   logger.log_stop_message(progname, opt.keyname, 'PiB', opt.scanDate)
    logger.save_to_file()
 
 

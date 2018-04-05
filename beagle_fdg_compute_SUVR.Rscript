@@ -43,14 +43,14 @@ option_list <- list(
          type="character", default=NULL, dest="keyname",
          help="Subject keyname (E.g. \"yueh\")"),
                
-   make_option(c("--scanId"), 
+   make_option(c("--scanDate"), 
          action="store", 
-         type="character", default=NULL, dest="scanId",
+         type="character", default=NULL, dest="scanDate",
          help="FDG scan Id for subject. (E.g. \"20071009\")"),
 
-   make_option(c("--civetScanId"), 
+   make_option(c("--civetScanDate"), 
          action="store", 
-         type="character", default=NULL, dest="civetScanId",
+         type="character", default=NULL, dest="civetScanDate",
          help="Civet scan date for subject. (E.g. \"20071009\")"),
                
    make_option(c("--settingsFile"), 
@@ -58,7 +58,7 @@ option_list <- list(
          type="character", default=NULL, dest="settingsFile",
          help="Fullpath to the aggregated settings file")
 )
-#
+
 #
 # ... create the parser, and then parse the command line
 header_text <- paste(usage_text, description_text, sep="")
@@ -66,7 +66,7 @@ parser <- OptionParser(usage=header_text, option_list=option_list)
 optX <- parse_args(parser, args=commandArgs(trailingOnly=TRUE), positional_arguments=TRUE)
 
 # ... move options and args into separate, more convenient structures
-O <- optX$options
+opt <- optX$options
 
 # check for the correct number of input volumes
 if ( length(optX$args) > 0 ){
@@ -77,12 +77,13 @@ if ( length(optX$args) > 0 ){
 
 
 #DEBUG ===========================================
-#O$ <- list()
-#O$verbose <- TRUE
-#O$debug <- TRUE
-#O$keyname <- "fenrir"
-#O$scanId <- "20071009"
-#O$settingsFile <- "..."
+#opt$ <- list()
+#opt$verbose <- TRUE
+#opt$debug <- TRUE
+#opt$keyname <- "fenrir"
+#opt$scanDate <- "20071009"
+#opt$civetScanDate <- "20071009"
+#opt$settingsFile <- "..."
 #
 log_file <- "loggingBySGE"
 #DEBUG ===========================================
@@ -107,17 +108,17 @@ library(beagle.statistics)
 
 # read the Loris aggregated settings file (in JSON format)
 #cat(sprintf("BEFORE settings load\n"))
-settings <- read_beagle_aggregated_settings(O$settingsFile, verbose=TRUE)
+settings <- read_beagle_aggregated_settings(opt$settingsFile, verbose=TRUE)
 #cat(sprintf("AFTER settings load\n"))
 
 
 
 # define some useful subdirectories
 LORIS_ROOT_DIR <- settings$LORIS_ROOT_DIR
-keyname_dir_fullPath <- file.path(LORIS_ROOT_DIR, O$keyname)
+keyname_dir_fullPath <- file.path(LORIS_ROOT_DIR, opt$keyname)
 
 # FDG-related paths
-fdgWorkingDir <- paste("FDG", O$scanId, sep="-")
+fdgWorkingDir <- paste("FDG", opt$scanDate, sep="-")
 fdgDir <- file.path(keyname_dir_fullPath, fdgWorkingDir)
 fdgDir_ratios <- file.path(fdgDir, "ratios")
 fdgDir_logs <- file.path(fdgDir, "logs")
@@ -126,7 +127,7 @@ fdgDir_logs <- file.path(fdgDir, "logs")
 CIVET_VERSION <- settings$CIVET_VERSION
 
 # AAL
-labels_dirname <- paste("AAL", O$civetScanId, sep="-")
+labels_dirname <- paste("AAL", opt$civetScanDate, sep="-")
 labelsDir <- file.path(keyname_dir_fullPath, labels_dirname)
 #
 AAL_LABELS_VERSION <- settings$AAL_LABELS_VERSION
@@ -138,7 +139,7 @@ AAL_LABELS_DESCRIPTION_FILE <- file.path(AAL_LABELS_DIR, AAL_LABELS_NAMES)
 
 RATIO_VOLUME_SUFFIX <- "_fdgRatios_noMask.mnc"
 # ... create a unique Id to write to csv file
-uniqueId <- paste(O$keyname, fdgWorkingDir, sep="-")
+uniqueId <- paste(opt$keyname, fdgWorkingDir, sep="-")
 
 
 
@@ -155,28 +156,28 @@ setwd(wrkDir)
 
 
 # load subject's master logfile, and then write a start message
-llogger <- beagle_logger_loadFromFile(O$keyname, settings)
+llogger <- beagle_logger_loadFromFile(opt$keyname, settings)
 progname <- 'beagle_fdg_compute_SUVR.Rscript'
-llogger <- beagle_logger_logStartMessage(progname, O$keyname, 'FDG', O$scanId, llogger)
-llogger <- beagle_logger_logMessage(progname, O$keyname, 'FDG',
-                                       O$scanId,
+llogger <- beagle_logger_logStartMessage(progname, opt$keyname, 'FDG', opt$scanDate, llogger)
+llogger <- beagle_logger_logMessage(progname, opt$keyname, 'FDG',
+                                       opt$scanDate,
                                        'civet_version', CIVET_VERSION,
                                        llogger)
 
 # set the status to "running"
-cat(sprintf("Computing FDG SUVR values for %s\n", O$scanId))
+cat(sprintf("Computing FDG SUVR values for %s\n", opt$scanDate))
 status_filename_running <- "beagle_fdg_compute_SUVR_JobStatus.running"
 status_filename_running <- file.path(fdgDir_logs, status_filename_running)
 file.create(status_filename_running)
 
 
 # set label volume full path
-lblFilename <- paste(O$keyname, LABEL_VOLUME_SUFFIX, sep="")
+lblFilename <- paste(opt$keyname, LABEL_VOLUME_SUFFIX, sep="")
 lblFilenameFullPath <- file.path(labelsDir, lblFilename)
 
 
 # set FDG ratio volume full path
-ratioFilename <- paste(O$keyname, "_fdgRatios_noMask.mnc", sep="")
+ratioFilename <- paste(opt$keyname, "_fdgRatios_noMask.mnc", sep="")
 ratioFilenameFullPath <- file.path(fdgDir_ratios, ratioFilename)
 
 
@@ -191,8 +192,6 @@ lbl_details.df <- subset(lbl_details.df, lbl_details.df$isCerebrum != 0 )
 # compute SUVR over all ROIs
 suvr.df <- compute_suvr_by_roi(ratioFilenameFullPath, lblFilenameFullPath, lbl_details.df)
 print(suvr.df)
-
-
 
 
 # compute various aggregate SUVR values
@@ -252,7 +251,7 @@ suvr_aggr.df$isSecondaryLbl[1] <- 0
 print(suvr_aggr.df)
 #
 # write selected values to the logfile
-llogger <- beagle_logger_logMessage(progname, O$keyname, 'FDG', O$scanId, 
+llogger <- beagle_logger_logMessage(progname, opt$keyname, 'FDG', opt$scanDate, 
                                        'suvr_over_cerebral_gm', mean_weighted_suvr, llogger)
 
 
@@ -295,7 +294,7 @@ suvr_aggr.df$isSecondaryLbl[2] <- 0
 print(suvr_aggr.df)
 #
 # write selected values to the logfile
-llogger <- beagle_logger_logMessage(progname, O$keyname, 'FDG', O$scanId, 
+llogger <- beagle_logger_logMessage(progname, opt$keyname, 'FDG', opt$scanDate, 
                                        'suvr_over_cortical_gm', mean_weighted_suvr, llogger)
 
 
@@ -339,7 +338,7 @@ suvr_aggr.df$isSecondaryLbl[3] <- 0
 print(suvr_aggr.df)
 #
 # write selected values to the logfile
-llogger <- beagle_logger_logMessage(progname, O$keyname, 'FDG', O$scanId, 
+llogger <- beagle_logger_logMessage(progname, opt$keyname, 'FDG', opt$scanDate, 
                                        'suvr_over_neo-cortical_gm', mean_weighted_suvr, llogger)
 
 
@@ -347,9 +346,9 @@ llogger <- beagle_logger_logMessage(progname, O$keyname, 'FDG', O$scanId,
 
 # write out the results to a csv file (append keyname and dirname first)
 suvr.df <- rbind(suvr.df, suvr_aggr.df)
-suvr.df <- cbind(uniqueId, keyname=O$keyname, dirname=fdgWorkingDir, suvr.df)
+suvr.df <- cbind(uniqueId, keyname=opt$keyname, dirname=fdgWorkingDir, suvr.df)
 #
-csvFilename <- paste(O$keyname, "_fdgRatios_SUVRs_", AAL_LABELS_VERSION, ".csv", sep="")
+csvFilename <- paste(opt$keyname, "_fdgRatios_SUVRs_", AAL_LABELS_VERSION, ".csv", sep="")
 ratioFilenameFullPath <- file.path(fdgDir_ratios, csvFilename)
 write.csv(suvr.df, ratioFilenameFullPath, row.names=FALSE)
 
@@ -366,11 +365,11 @@ file.rename(status_filename_running, status_filename_finished)
 
 
 # log a 'done' message to the subject's master logfile, and then write out logfile
-llogger <- beagle_logger_logStopMessage(progname, O$keyname, 'FDG', O$scanId, llogger)
-beagle_logger_saveToFile(O$keyname, llogger, settings)
+llogger <- beagle_logger_logStopMessage(progname, opt$keyname, 'FDG', opt$scanDate, llogger)
+beagle_logger_saveToFile(opt$keyname, llogger, settings)
 
 # print the log entries (for fun)
-logger.df <- beagle_logger_loadFromFileAsDataFrame(O$keyname, settings)
+logger.df <- beagle_logger_loadFromFileAsDataFrame(opt$keyname, settings)
 options(width=9999)
 print(logger.df)
 

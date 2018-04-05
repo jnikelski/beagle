@@ -133,7 +133,7 @@ begin
 
       # ... Ct
       oldName = File.join(lorisKeyname_dir_fullPath, "Ct")
-      newSubdirName = "THICKNESS-" + civetId_scanDate
+      newSubdirName = "thickness-" + civetId_scanDate
       newName = File.join(lorisKeyname_dir_fullPath, newSubdirName)
       puts(sprintf("Changing %s ---> %s", oldName, newName))
       FileUtils.mv(oldName, newName, :verbose => true)

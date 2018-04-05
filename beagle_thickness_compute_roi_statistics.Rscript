@@ -40,9 +40,9 @@ option_list <- list(
          type="character", default=NULL, dest="keyname",
          help="Subject keyname (E.g. \"yueh\")"),
 
-   make_option(c("--scanDate"), 
+   make_option(c("--civetScanDate"), 
          action="store", 
-         type="character", default=NULL, dest="scanId",
+         type="character", default=NULL, dest="civetScanDate",
          help="Civet scan date for subject. (E.g. \"20071009\")"),
                
    make_option(c("--settingsFile"), 
@@ -65,7 +65,7 @@ option_list <- list(
          type="character", default=NULL, dest="surfaceLabelsVectorFile",
          help="Extracted AAL labels vector file. (LH and RH, fullpath)")
 )
-#
+
 #
 # ... create the parser, and then parse the command line
 header_text <- paste(usage_text, description_text, sep="")
@@ -73,8 +73,8 @@ parser <- OptionParser(usage=header_text, option_list=option_list)
 optX <- parse_args(parser, args=commandArgs(trailingOnly=TRUE), positional_arguments=TRUE)
 
 # ... move options and args into separate, more convenient structures
-opts_in <- optX$options
-print(opts_in)
+opt <- optX$options
+print(opt)
 
 #
 # </Parsing>
@@ -83,30 +83,25 @@ print(opts_in)
 #DEBUG 1 ===========================================
 #beagle_thickness_compute_roi_statistics.Rscript   -v -d 
 #--keyname p159 
-#--scanDate  20161027  
+#--civetScanDate  20161027  
 #--settingsFile /home/jnikelski/localData/joubertLab_processing/beagle/xrun_20171109A/results/loris_aggregated_settings_starbuckVM-20171109A.json 
 #--thicknessVectorFile /home/jnikelski/localData/joubertLab_processing/beagle/xrun_20171109A/results/p159/THICKNESS-20161027/p159_thickness_lhrh.txt  
 #--zscoresVectorFile /home/jnikelski/localData/joubertLab_processing/beagle/xrun_20171109A/results/p159/THICKNESS-20161027/p159_thickness_zscores.txt  
 #--surfaceLabelsVectorFile /home/jnikelski/localData/joubertLab_processing/beagle/xrun_20171109A/results/p159/THICKNESS-20161027/p159_extracted_aal_surface_labels.txt
 #
-#opts_in <- list()
-#opts_in$verbose <- TRUE
-#opts_in$debug <- TRUE
-#opts_in$keyname <- "p159"
-#opts_in$scanId <- "20161027"
-#opts_in$settingsFile <- "/home/jnikelski/localData/joubertLab_processing/beagle/xrun_20171109A/results/loris_aggregated_settings_starbuckVM-20171109A.json"
+#opt <- list()
+#opt$verbose <- TRUE
+#opt$debug <- TRUE
+#opt$keyname <- "p159"
+#opt$civetScanDate <- "20161027"
+#opt$settingsFile <- "/home/jnikelski/localData/joubertLab_processing/beagle/xrun_20171109A/results/loris_aggregated_settings_starbuckVM-20171109A.json"
 #
-#opts_in$thicknessVectorFile <- "/home/jnikelski/localData/joubertLab_processing/beagle/xrun_20171109A/results/p159/THICKNESS-20161027/p159_thickness_lhrh.txt"
-#opts_in$zscoresVectorFile <- "/home/jnikelski/localData/joubertLab_processing/beagle/xrun_20171109A/results/p159/THICKNESS-20161027/p159_thickness_zscores.txt"
-#opts_in$surfaceLabelsVectorFile <- "/home/jnikelski/localData/joubertLab_processing/beagle/xrun_20171109A/results/p159/THICKNESS-20161027/p159_extracted_aal_surface_labels.txt"
+#opt$thicknessVectorFile <- "/home/jnikelski/localData/joubertLab_processing/beagle/xrun_20171109A/results/p159/THICKNESS-20161027/p159_thickness_lhrh.txt"
+#opt$zscoresVectorFile <- "/home/jnikelski/localData/joubertLab_processing/beagle/xrun_20171109A/results/p159/THICKNESS-20161027/p159_thickness_zscores.txt"
+#opt$surfaceLabelsVectorFile <- "/home/jnikelski/localData/joubertLab_processing/beagle/xrun_20171109A/results/p159/THICKNESS-20161027/p159_extracted_aal_surface_labels.txt"
 #
 log_file <- "loggingBySGE"
 #DEBUG 1 ===========================================
-
-
-# add some extra derived values to the input packet
-opts_in$cta_dirname <- paste("THICKNESS", opts_in$scanId, sep="-")
-
 
 
 # if the log is being written to SGE, then don't log internally
@@ -114,7 +109,6 @@ if ( log_file != "loggingBySGE" ) {
    sink(log_file)
    options(echo=FALSE)
 }
-
 
 
 # = = = = = = = =   M A I N   P R O C E S S I N G   S T A R T S   H E R E   = = = = = = =
@@ -128,7 +122,7 @@ library(stringr)
 
 # read the Loris aggregated settings file (in JSON format)
 #cat(sprintf("BEFORE settings load\n"))
-settings <- read_beagle_aggregated_settings(opts_in$settingsFile, verbose=TRUE)
+settings <- read_beagle_aggregated_settings(opt$settingsFile, verbose=TRUE)
 #cat(sprintf("AFTER settings load\n"))
 
 
@@ -138,7 +132,6 @@ AAL_LABELS_NAMES <- settings$AAL_LABELS_NAMES
 AAL_LABELS_DESCRIPTION_FILE <- file.path(AAL_LABELS_DIR, AAL_LABELS_NAMES)
 
 CIVET_VERSION <- settings$CIVET_VERSION
-CIVET_PREFIX <- paste(settings$CIVET_PREFIX, '_', sep='')
 CIVET_SURFACE_NO_OF_VERTICES_LEFT <- as.numeric(settings$CIVET_SURFACE_NO_OF_VERTICES_LEFT)
 CIVET_SURFACE_NO_OF_VERTICES_RIGHT <- as.numeric(settings$CIVET_SURFACE_NO_OF_VERTICES_RIGHT)
 CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN <- as.numeric(settings$CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN)
@@ -153,8 +146,9 @@ zTholds_pValues <- c("0.01", "0.001", "0.0001")
 
 # define some useful subdirectories
 LORIS_ROOT_DIR <- settings$LORIS_ROOT_DIR
-loris_subject_rootDir <- file.path(LORIS_ROOT_DIR, opts_in$keyname)
-cta_dir_fullPath <- file.path(loris_subject_rootDir, opts_in$cta_dirname)
+loris_subject_rootDir <- file.path(LORIS_ROOT_DIR, opt$keyname)
+cta_dirname <- paste("thickness", opt$civetScanDate, sep="-")
+cta_dir_fullPath <- file.path(loris_subject_rootDir, cta_dirname)
 ctaLogs_dir_fullPath <- file.path(cta_dir_fullPath, "logs")
 ctaImages_dir_fullPath <- file.path(cta_dir_fullPath, "images")
 
@@ -165,17 +159,17 @@ setwd(wrkDir)
 
 
 # load subject's master logfile, and then write a start message
-llogger <- beagle_logger_loadFromFile(opts_in$keyname, settings)
+llogger <- beagle_logger_loadFromFile(opt$keyname, settings)
 progname <- 'beagle_thickness_compute_roi_statistics.Rscript'
-llogger <- beagle_logger_logStartMessage(progname, opts_in$keyname, 'THICKNESS', opts_in$scanId, llogger)
-llogger <- beagle_logger_logMessage(progname, opts_in$keyname, 'THICKNESS',
-                                       opts_in$scanId,
+llogger <- beagle_logger_logStartMessage(progname, opt$keyname, 'THICKNESS', opt$civetScanDate, llogger)
+llogger <- beagle_logger_logMessage(progname, opt$keyname, 'THICKNESS',
+                                       opt$civetScanDate,
                                        'civet_version', CIVET_VERSION,
                                        llogger)
 
 
 # set the status to "running"
-cat(sprintf("Performing Cortical Thickness ROI processing for %s\n", opts_in$scanId))
+cat(sprintf("Performing Cortical Thickness ROI processing for %s\n", opt$civetScanDate))
 status_filename_running <- "beagle_thickness_compute_roi_statistics_JobStatus.running"
 status_filename_running <- file.path(ctaLogs_dir_fullPath, status_filename_running)
 file.create(status_filename_running)
@@ -201,11 +195,11 @@ hemisphere <- str_sub(lbl_details.df$LabelName, -1)
 lbl_details.df$hemisphere <- factor(hemisphere, levels=c("L","R","LR"), labels=c("LH","RH","LHRH"))
 
 # load vertex-level info from vector files
-thickness.vec <- scan(opts_in$thicknessVectorFile, nmax=CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN)
-zscores.vec <- scan(opts_in$zscoresVectorFile, nmax=CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN)
+thickness.vec <- scan(opt$thicknessVectorFile, nmax=CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN)
+zscores.vec <- scan(opt$zscoresVectorFile, nmax=CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN)
 #
 # round labels to get integer-ish values
-aal_labels.vec <- scan(opts_in$surfaceLabelsVectorFile, nmax=CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN)
+aal_labels.vec <- scan(opt$surfaceLabelsVectorFile, nmax=CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN)
 aal_labels.vec <- round(aal_labels.vec)
 
 
@@ -283,12 +277,12 @@ lbl_detailsX.df <- rbind(lbl_details.df, hemi_rx.df)
 
 
 # write out the results to a csv file (append keyname and dirname first)
-quant_csv.df <- cbind(uniqueId=paste(opts_in$keyname, opts_in$cta_dirname, sep="-"),
-                        keyname=opts_in$keyname, 
-                        dirname=opts_in$cta_dirname, 
+quant_csv.df <- cbind(uniqueId=paste(opt$keyname, cta_dirname, sep="-"),
+                        keyname=opt$keyname, 
+                        dirname=cta_dirname, 
                         lbl_detailsX.df)
 
-csvFilename <- paste(opts_in$keyname,
+csvFilename <- paste(opt$keyname,
                      "_thickness_statistics_by_roi_",
                      AAL_LABELS_VERSION,
                      ".csv", sep="")
@@ -309,8 +303,8 @@ file.rename(status_filename_running, status_filename_finished)
 
 
 # log a 'done' message to the subject's master logfile, and then write out logfile
-llogger <- beagle_logger_logStopMessage(progname, opts_in$keyname, 'THICKNESS', opts_in$scanId, llogger)
-beagle_logger_saveToFile(opts_in$keyname, llogger, settings)
+llogger <- beagle_logger_logStopMessage(progname, opt$keyname, 'THICKNESS', opt$civetScanDate, llogger)
+beagle_logger_saveToFile(opt$keyname, llogger, settings)
 
 
 

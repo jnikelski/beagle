@@ -26,6 +26,7 @@ require 'hclab_function_library'
 require 'beagle_function_library'
 require 'beagle_configFile_classes'
 require 'beagle_build_run_commands'
+require 'beagle_civet_function_library'
 
 
 # start of main script
@@ -35,6 +36,7 @@ begin
    opt.debug               = false
    opt.fake                = false
    opt.SGE                 = false              # submit to batch queueing system
+   opt.sgeDelay            = "0"                # SGE processing delay (in minutes)
    opt.settingsFile        = ""
    opt.runConfigFile       = ""
 
@@ -52,6 +54,11 @@ begin
       opts.on('-f', '--fake', 'Fake mode -- do not actually execute') { |f| opt.fake = f }
       
       opts.on('--SGE', 'Submit processing to batch queueing system') { |sge| opt.SGE = sge }
+
+      opts.on('--sgeDelay sge_delay_time', "Number of minutes for a new SGE job to sleep prior to starting processing ") do |sgeDelay|
+         opt.sgeDelay = sgeDelay.to_i
+         puts "** SGE delay time (minutes): " + opt.sgeDelay.to_s if opt.verbose
+      end
 
       opts.on('--settingsFile beagle_settings_file', "Fullpath to the beagle settings file ") do |settingsFile|
          opt.settingsFile = settingsFile.to_s
@@ -122,7 +129,6 @@ begin
    
    LORIS_LOGFILE_SUFFIX = settings['LORIS_LOGFILE_SUFFIX']
    LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
-   CIVET_ROOT_DIR = settings['CIVET_ROOT_DIR']
    CIVET_SUBJECT_INFO = settings['CIVET_SUBJECT_INFO']
    PIB_SUBJECT_INFO = settings['PIB_SUBJECT_INFO']
    FDG_SUBJECT_INFO = settings['FDG_SUBJECT_INFO']
@@ -141,10 +147,7 @@ begin
 
    # check if the Civet directory tree exists and is valid
    # ... let's say that this *must* exist
-   if ( !File.exists?(CIVET_ROOT_DIR) || !File.directory?(CIVET_ROOT_DIR) ) then
-      puts sprintf("\n!!! Error: The specified Civet root directory [%s] does not exist.", CIVET_ROOT_DIR)
-      exit
-   end
+   if !dirname = civet_getCivetRootDirectoryName(settings:settings, opt:opt, checkExistence:true) then exit end
 
 
 
@@ -192,6 +195,15 @@ begin
       
       # print start date/time (declare cmd at this scope)
       cmd = "date\n"
+      cmd << "printenv\n"
+
+      # running jobs serially via SGE can cause my current machine to heat up, so, it is useful to
+      # be able to enforce a pause prior to cranking away on the next job
+      # ... the pause is specified in minutes, and inserted into all but the first job
+      if ( opt.SGE &&  keyname != subjects_tbp.first ) then
+         cmd << "sleep #{opt.sgeDelay}m\n"
+         cmd << "date\n"
+      end 
 
       # initialization
       cmd << buildCmd_beagle_run_initialization(keyname, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
@@ -343,18 +355,20 @@ begin
       File.chmod(0744, driverFilename_fullpath)
       
       # if submitting to SGE, we need to append some extra stuff
+      # ... append 'BGL' to job name, as SGE doesn't like jobs starting with numeric/special characters
       jobname = 'BGL-' + keyname
       filename = 'run-' + LORIS_RUN_IDENTIFIER + '.log'
       logfile_fullPath = File.join(keynameLogs_dir_fullPath, filename)
       if ( opt.SGE ) then
          cmdSge = "qsub "
-         cmdSge << "-S /bin/bash "
-         cmdSge << "-b y "
-         cmdSge << "-cwd "
-         cmdSge << "-j y "
-         cmdSge << "-V "
-         cmdSge << "-N #{jobname}  "
-         cmdSge << "-o #{logfile_fullPath}    "
+         cmdSge << "-S /bin/bash "                          #
+         cmdSge << "-b y "                                  # allow command to be a binary file instead of a script
+         cmdSge << "-cwd "                                  # run in current working directory -- where else ???????
+         cmdSge << "-j y "                                  # join the error and normal output into one file rather than two
+         cmdSge << "-w e "                                  # verify options and abort if there is an error
+         cmdSge << "-V "                                    # pass all env vars to job
+         cmdSge << "-N #{jobname}  "                        # job name
+         cmdSge << "-o #{logfile_fullPath}    "             #
          cmdSge << "-l hostname=#{settings['SGE_EXECUTION_HOST']}   "
          cmdSge << "#{driverFilename_fullpath}"
          do_cmd(cmdSge, opt.verbose, opt.fake)

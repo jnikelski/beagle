@@ -39,14 +39,14 @@ option_list <- list(
          type="character", default=NULL, dest="keyname",
          help="Subject keyname (E.g. \"yueh\")"),
                
-   make_option(c("--scanId"), 
+   make_option(c("--scanDate"), 
          action="store", 
-         type="character", default=NULL, dest="scanId",
+         type="character", default=NULL, dest="scanDate",
          help="PiB scan Id for subject. (E.g. \"20071009\")"),
 
-   make_option(c("--civetScanId"), 
+   make_option(c("--civetScanDate"), 
          action="store", 
-         type="character", default=NULL, dest="civetScanId",
+         type="character", default=NULL, dest="civetScanDate",
          help="Civet scan Id for subject. (E.g. \"20071009\")"),
                
    make_option(c("--settingsFile"), 
@@ -54,7 +54,7 @@ option_list <- list(
          type="character", default=NULL, dest="settingsFile",
          help="Fullpath to the aggregated settings file")
 )
-#
+
 #
 # ... create the parser, and then parse the command line
 header_text <- paste(usage_text, description_text, sep="")
@@ -62,7 +62,7 @@ parser <- OptionParser(usage=header_text, option_list=option_list)
 optX <- parse_args(parser, args=commandArgs(trailingOnly=TRUE), positional_arguments=TRUE)
 
 # ... move options and args into separate, more convenient structures
-O <- optX$options
+opt <- optX$options
 
 # check for the correct number of input volumes
 if ( length(optX$args) > 0 ){
@@ -72,22 +72,17 @@ if ( length(optX$args) > 0 ){
 # </Parsing>
 
 
-
 #DEBUG ===========================================
-#O$ <- list()
-#O$verbose <- TRUE
-#O$debug <- TRUE
-#O$keyname <- "fenrir"
-#O$scanId <- "20071009"
-#O$settingsFile <- "..."
+#opt$ <- list()
+#opt$verbose <- TRUE
+#opt$debug <- TRUE
+#opt$keyname <- "fenrir"
+#opt$scanDate <- "20071009"
+#opt$civetScanDate <- "20071009"
+#opt$settingsFile <- "..."
 #
 log_file <- "loggingBySGE"
 #DEBUG ===========================================
-
-
-# add some extra derived values to the input packet
-civetScanDir <- paste(O$keyname, O$civetScanId, sep="-")
-pibWorkingDir <- paste("PiB", O$scanId, sep="-")
 
 
 # if the log is being written to SGE, then don't log internally
@@ -107,41 +102,28 @@ library(beagle.statistics)
 
 # read the Loris aggregated settings file (in JSON format)
 #cat(sprintf("BEFORE settings load\n"))
-settings <- read_beagle_aggregated_settings(O$settingsFile, verbose=TRUE)
+settings <- read_beagle_aggregated_settings(opt$settingsFile, verbose=TRUE)
 #cat(sprintf("AFTER settings load\n"))
 
 
 # set some useful constants
 CIVET_VERSION <- settings$CIVET_VERSION
-CIVET_PREFIX <- paste(settings$CIVET_PREFIX, '_', sep='')
 PIB4d_VOLUME_SUFFIX <- "_talAligned_filtered.mnc"
 ADJUSTED_CEREB_GM_MASK_SUFFIX = '_cerebGMmask_maskedBy_meanPibActivity.mnc'
 
 
 # define some useful subdirectories
 LORIS_ROOT_DIR <- settings$LORIS_ROOT_DIR
-keyname_dir_fullPath <- file.path(LORIS_ROOT_DIR, O$keyname)
+keyname_dir_fullPath <- file.path(LORIS_ROOT_DIR, opt$keyname)
 
 # PiB-related paths
+pibWorkingDir <- paste("PiB", opt$scanDate, sep="-")
 pibDir <- file.path(keyname_dir_fullPath, pibWorkingDir)
 pibDir_ratiosDir <- file.path(pibDir, "ratios")
 pibDir_logsDir <- file.path(pibDir, "logs")
 pibDir_imagesDir <- file.path(pibDir, "images")
 pibDir_masksDir <- file.path(pibDir, "masks")
 pibDir_talDir <- file.path(pibDir, "tal")
-
-# civet-related paths
-CIVET_ROOT_DIR <- settings$CIVET_ROOT_DIR
-# set civet scan id -- default to appending 
-CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME <- settings$CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME
-civetScanDir <- paste(O$keyname, O$civetScanId, sep="-")
-# don't append, just use keyname
-if ( CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME != "ON") {
-      civetScanDir <- O$keyname
-}
-#
-civet_subject_rootDir <- file.path(CIVET_ROOT_DIR, civetScanDir)
-
 
 
 # set working directory as the PiB subject root dir
@@ -164,16 +146,16 @@ library(beagle.statistics)
 
 
 # load subject's master logfile, and then write a start message
-llogger <- beagle_logger_loadFromFile(O$keyname, settings)
+llogger <- beagle_logger_loadFromFile(opt$keyname, settings)
 progname <- 'beagle_pib_compute_ratios.Rscript'
-llogger <- beagle_logger_logStartMessage(progname, O$keyname, 'PiB', O$scanId, llogger)
-llogger <- beagle_logger_logMessage(progname, O$keyname, 'PiB',
-                                       O$scanId,
+llogger <- beagle_logger_logStartMessage(progname, opt$keyname, 'PiB', opt$scanDate, llogger)
+llogger <- beagle_logger_logMessage(progname, opt$keyname, 'PiB',
+                                       opt$scanDate,
                                        'civet_version', CIVET_VERSION,
                                        llogger)
 
 # set the status to "running"
-cat(sprintf("Generating a PiB ratio volume for %s\n", O$scanId))
+cat(sprintf("Generating a PiB ratio volume for %s\n", opt$scanDate))
 status_filename_running <- "beagle_pib_compute_ratios_JobStatus.running"
 status_filename_running <- file.path(pibDir_logsDir, status_filename_running)
 file.create(status_filename_running)
@@ -182,10 +164,10 @@ file.create(status_filename_running)
 # we're going to pass a packet of args to the actual processing 
 # function, so let's pass it as a list
 packet <- list()
-packet$keyname <- O$keyname
+packet$keyname <- opt$keyname
 #
 # pass the actual 4D (filtered) PiB volume
-filename <- paste(O$keyname, PIB4d_VOLUME_SUFFIX, sep="")
+filename <- paste(opt$keyname, PIB4d_VOLUME_SUFFIX, sep="")
 packet$pib_4d_vol <- file.path(pibDir_talDir, filename)
 print(packet)
 
@@ -265,7 +247,7 @@ if ( mincIO.getProperty(pib_header, "nFrames") != 34 && mincIO.getProperty(pib_h
 #
 # do the magic, then write out the AUC volume
 pibAucVol <- compute_dynamic_volume_auc(packet)
-filename <- file.path(pibDir_ratiosDir, paste(O$keyname, "_pibAucValues_noMask.mnc", sep=""))
+filename <- file.path(pibDir_ratiosDir, paste(opt$keyname, "_pibAucValues_noMask.mnc", sep=""))
 mincIO.writeVolume(pibAucVol, filename)
 
 
@@ -282,7 +264,7 @@ mincIO.writeVolume(pibAucVol, filename)
 refTissue_mask_volNames <- c()
 # ref tissue = cerebellar gray matter
 # e.g. "baal_cerebGMmask_maskedBy_meanPibActivity.mnc"
-filename <- file.path(pibDir_masksDir, paste(O$keyname, ADJUSTED_CEREB_GM_MASK_SUFFIX, sep=""))
+filename <- file.path(pibDir_masksDir, paste(opt$keyname, ADJUSTED_CEREB_GM_MASK_SUFFIX, sep=""))
 refTissue_mask_volnames_fullpath <- c(refTissue_mask_volNames, filename)
 
 # (2) create a similar vector, comprised of reference tissue labels
@@ -292,7 +274,7 @@ refTissue_labels <- c(refTissue_labels, "refCerebGM")
 
 
 # set a few additional packet settings
-packet$pib_scanId <- paste(O$keyname, O$scanId, sep="-")
+packet$pibAucPlotSubtitle <- paste(opt$keyname, opt$scanDate, sep="-")
 
 # loop over all reference tissues
 #  ... compute AUC, ratios, and some lovely plots
@@ -300,38 +282,39 @@ for ( ndx in 1:length(refTissue_labels)) {
 
    # set the ref tissue mask volume name
    packet$refTissue_volname_fullPath <- refTissue_mask_volnames_fullpath[ndx]
+   print(packet)
    refAuc.lst <- compute_ref_tissue_auc(packet)
 
    # divide each voxel's integral by that of the reference, then write out the ratio volume
    pibRatioVol <- pibAucVol / refAuc.lst$refAuc
-   filename <- file.path(pibDir_ratiosDir, paste(O$keyname, "_pibRatios_", refTissue_labels[ndx], "_noMask.mnc", sep=""))
+   filename <- file.path(pibDir_ratiosDir, paste(opt$keyname, "_pibRatios_", refTissue_labels[ndx], "_noMask.mnc", sep=""))
    mincIO.writeVolume(pibRatioVol, filename)
    
    # write out plots
    #
    # the return list contains a trellis plot - print it (vector and raster formats)
-   fileOut <- file.path(pibDir_imagesDir, paste(O$keyname, "_", refTissue_labels[ndx],"_AUCplot.pdf", sep=""))
+   fileOut <- file.path(pibDir_imagesDir, paste(opt$keyname, "_", refTissue_labels[ndx],"_AUCplot.pdf", sep=""))
    trellis.device(device="pdf", file=fileOut, width=6, height=4, paper="letter")
    print(refAuc.lst$refAUCplot)
    dev.off()
    #
-   fileOut <- file.path(pibDir_imagesDir, paste(O$keyname, "_", refTissue_labels[ndx],"_AUCplot.png", sep=""))
+   fileOut <- file.path(pibDir_imagesDir, paste(opt$keyname, "_", refTissue_labels[ndx],"_AUCplot.png", sep=""))
    trellis.device(device="png", file=fileOut, width=6, height=4, units="in", res=600)
    print(refAuc.lst$refAUCplot)
    dev.off()
    
    # write selected values to the logfile
-   llogger <- beagle_logger_logMessage(progname, O$keyname, 'PiB', O$scanId, 
+   llogger <- beagle_logger_logMessage(progname, opt$keyname, 'PiB', opt$scanDate, 
                                           paste(refTissue_labels[ndx],'avg_refValues_byFrame', sep='_'), 
                                           refAuc.lst$avg_refValues_byFrame.v,
                                           llogger)
                                              
-   llogger <- beagle_logger_logMessage(progname, O$keyname, 'PiB', O$scanId, 
+   llogger <- beagle_logger_logMessage(progname, opt$keyname, 'PiB', opt$scanDate, 
                                              paste(refTissue_labels[ndx],'mid_frame_times', sep='_'),
                                              refAuc.lst$mid_frame_times.v,
                                              llogger)
                                              
-   llogger <- beagle_logger_logMessage(progname, O$keyname, 'PiB', O$scanId, 
+   llogger <- beagle_logger_logMessage(progname, opt$keyname, 'PiB', opt$scanDate, 
                                              paste(refTissue_labels[ndx],'AUC', sep='_'),
                                              refAuc.lst$refAuc,
                                              llogger)
@@ -350,12 +333,12 @@ file.rename(status_filename_running, status_filename_finished)
 
 
 # log a 'done' message to the subject's master logfile, and then write out logfile
-llogger <- beagle_logger_logStopMessage(progname, O$keyname, 'PiB', O$scanId, llogger)
-beagle_logger_saveToFile(O$keyname, llogger, settings)
+llogger <- beagle_logger_logStopMessage(progname, opt$keyname, 'PiB', opt$scanDate, llogger)
+beagle_logger_saveToFile(opt$keyname, llogger, settings)
 
 
 # print the log entries (for fun)
-logger.df <- beagle_logger_loadFromFileAsDataFrame(O$keyname, settings)
+logger.df <- beagle_logger_loadFromFileAsDataFrame(opt$keyname, settings)
 options(width=9999)
 print(logger.df)
 

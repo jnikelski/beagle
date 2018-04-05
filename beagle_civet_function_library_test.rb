@@ -53,7 +53,7 @@ puts "Ruby version: #{RUBY_VERSION}" if opt.debug
 
 ## run the test
 #params = {civet_keyname:"0139-F-AD", civet_scanid:"00000000", settings:settings, opt:opt, fullpath:true, checkExistence:true}
-#params = {civet_keyname:"sinbad", civet_scanid:"20030729", settings:settings, opt:opt, fullpath:true, checkExistence:true}
+params = {civet_keyname:"sinbad", civet_scanid:"20030729", settings:settings, opt:opt, fullpath:true, checkExistence:true}
 
 #rx =  civet_getFilenameClassify(params)
 #puts "---> #{rx}"
@@ -69,9 +69,9 @@ puts "Ruby version: #{RUBY_VERSION}" if opt.debug
 #puts "---> #{rx}"
 #rx = civet_getFilenameSkullMask(params)
 #puts "---> #{rx}"
-#rxLh, rxRh = civet_getFilenameGrayMatterSurfaces(params.merge({:resampled => true}))
-#puts "---> #{rxLh}"
-#puts "---> #{rxRh}"
+rxLh, rxRh = civet_getFilenameGrayMatterSurfaces(params.merge({:resampled => true}))
+puts "---> #{rxLh}"
+puts "---> #{rxRh}"
 #rxLh, rxRh = civet_getFilenameWhiteMatterSurfaces(params.merge({:resampled => true}))
 #puts "---> #{rxLh}"
 #puts "---> #{rxRh}"
