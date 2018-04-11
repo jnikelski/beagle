@@ -28,6 +28,11 @@ require 'beagle_configFile_classes'
 require 'beagle_build_run_commands'
 require 'beagle_civet_function_library'
 
+# set some constants related to processing stages
+STAGE_START = 'run_init'
+STAGE_STOP = 'reporting'
+STAGES = ['run_init', 'anatomical', 'pib', 'fdg', 'reporting']
+
 
 # start of main script
 begin
@@ -37,6 +42,9 @@ begin
    opt.fake                = false
    opt.SGE                 = false              # submit to batch queueing system
    opt.sgeDelay            = "0"                # SGE processing delay (in minutes)
+   opt.stageStart          = STAGE_START        # default pipeline Start stage
+   opt.stageStop           = STAGE_STOP         # default pipeline Stop stage
+   opt.stagesTbr           = "all"              # stages to be run
    opt.settingsFile        = ""
    opt.runConfigFile       = ""
 
@@ -58,6 +66,21 @@ begin
       opts.on('--sgeDelay sge_delay_time', "Number of minutes for a new SGE job to sleep prior to starting processing ") do |sgeDelay|
          opt.sgeDelay = sgeDelay.to_i
          puts "** SGE delay time (minutes): " + opt.sgeDelay.to_s if opt.verbose
+      end
+
+      opts.on('--stageStart starting_stage_name', "Starting stage name. Default is 'run_init' ") do |stageStart|
+         opt.stageStart = stageStart
+         puts "** Pipeline start stage: " + opt.stageStart if opt.verbose
+      end
+
+      opts.on('--stageStop ending_stage_name', "Ending stage name. Default is 'reporting' ") do |stageStop|
+         opt.stageStop = stageStop
+         puts "** Pipeline stop stage: " + opt.stageStop if opt.verbose
+      end
+
+      opts.on('--stages list_of_stages', "Comma-separated list of stages to be run, or 'all' ") do |stagesTbr|
+         opt.stagesTbr = stagesTbr
+         puts "** Pipeline stages to be run: " + opt.stagesTbr if opt.verbose
       end
 
       opts.on('--settingsFile beagle_settings_file', "Fullpath to the beagle settings file ") do |settingsFile|
@@ -134,6 +157,65 @@ begin
    FDG_SUBJECT_INFO = settings['FDG_SUBJECT_INFO']
 
 
+
+   # create an array, containing all of the stages to be processed
+   #
+   # our options are:
+   # (1) user has accepted defaults = run all appropriate processing stages
+   # (2) user has either specified 'stageStart' and/or 'stageStop' arg
+   # (3) user has opted to specify stages directly as a comma-separated list to the 'stages' arg
+   #
+   # if all defaults, process all stages
+   if ( opt.stageStart == STAGE_START && opt.stageStop == STAGE_STOP && opt.stagesTbr == 'all' ) then
+      opt.stagesTbr = STAGES
+   
+   # user has decided to start and/or stop at specific points
+   elsif ( opt.stageStart != STAGE_START || opt.stageStop != STAGE_STOP) then
+      startNdx = STAGES.index(opt.stageStart)
+      if ( startNdx.nil? )
+         puts "\n*** Error: Argument *stageStart* contains an unknown stage name (#{opt.stageStart})"
+         puts "***        Valid stage names include: 'run_init', 'anatomical', 'pib', 'fdg', and 'reporting'"
+         exit
+      end
+      stopNdx = STAGES.index(opt.stageStop)
+      if ( stopNdx.nil? )
+         puts "\n*** Error: Argument *stageStop* contains an unknown stage name (#{opt.stageStop})"
+         puts "***        Valid stage names include: 'run_init', 'anatomical', 'pib', 'fdg', and 'reporting'"
+         exit
+      end
+      if ( stopNdx < startNdx )
+         puts "\n*** Error: The start stage (stageStart) must occur **before** the stop stage (stageStop)"
+         puts "***        Stage processing order: 'run_init', 'anatomical', 'pib', 'fdg', and 'reporting'"
+         exit
+      end
+      opt.stagesTbr = STAGES[startNdx..stopNdx]
+   
+   # user has provided a list of stages to be processed -- in order
+   else
+      stages = opt.stagesTbr.split(',')
+      if ( stages.empty? ) then
+         puts "\n*** Error: Something weird has been entered into the *stages* arg."
+         puts "***        I see: #{opt.stagesTbr}"
+         exit
+      end
+      # loop over stages, and contruct an array of stages to be processed
+      opt.stagesTbr = []
+      stages.each {|stageName|
+         item = stageName.strip
+         if ( STAGES.include?(item) ) then
+            opt.stagesTbr.push(item)
+         else
+            puts "\n*** Error: Stage name (#{item}) included in the --stages arg is not a valid stage name."
+            puts "***        Valid stage names include: 'run_init', 'anatomical', 'pib', 'fdg', and 'reporting'"
+            exit
+         end
+      }
+      
+   end
+   # cool. We now have an array that contains all of the stages to be processed.
+   puts "Array of desired processing stages: #{opt.stagesTbr}" if opt.debug
+
+
    #
    # global validity checks 
    #
@@ -206,7 +288,10 @@ begin
       end 
 
       # initialization
-      cmd << buildCmd_beagle_run_initialization(keyname, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+      stageName = 'run_init'
+      if ( opt.stagesTbr.include?(stageName) ) then
+         cmd << buildCmd_beagle_run_initialization(keyname, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+      end
 
 
       # [B] Anatomical Stages
@@ -229,40 +314,42 @@ begin
          exit
       end
             
-      scans.each{ |scan_item|
-      
-         # initialization
-         puts "Building *beagle_anatomical_initialization* command " if opt.debug
-         cmd << buildCmd_beagle_anatomical_initialization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+      stageName = 'anatomical'
+      if ( opt.stagesTbr.include?(stageName) ) then
+         scans.each{ |scan_item|
          
-         # Labels
-         puts "Building *beagle_labels_fit_AAL* command " if opt.debug
-         cmd << buildCmd_beagle_labels_fit_AAL(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-         
-         # Masks
-         puts "Building *beagle_masks_generate_from_labels* command " if opt.debug
-         cmd << buildCmd_beagle_masks_generate_from_labels(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-         
-         # VBM
-         puts "Building *beagle_vbm_compute_individ_VBM* command " if opt.debug
-         cmd << buildCmd_beagle_vbm_compute_individ_VBM(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-         puts "Building *beagle_vbm_quantification* command " if opt.debug
-         cmd << buildCmd_beagle_vbm_quantification(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-         puts "Building *beagle_vbm_volumetric_visualization* command " if opt.debug
-         cmd << buildCmd_beagle_vbm_volumetric_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-         
-         # CTA
-         puts "Building *beagle_thickness_compute_zscores* command " if opt.debug
-         cmd << buildCmd_beagle_thickness_compute_zscores(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-         puts "Building *beagle_thickness_extract_surface_labels* command " if opt.debug
-         cmd << buildCmd_beagle_thickness_extract_surface_labels(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-         puts "Building *beagle_thickness_compute_roi_statistics* command " if opt.debug
-         cmd << buildCmd_beagle_thickness_compute_roi_statistics(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-         puts "Building *beagle_thickness_surface_visualization* command " if opt.debug
-         cmd << buildCmd_beagle_thickness_surface_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            # initialization
+            puts "Building *beagle_anatomical_initialization* command " if opt.debug
+            cmd << buildCmd_beagle_anatomical_initialization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            
+            # Labels
+            puts "Building *beagle_labels_fit_AAL* command " if opt.debug
+            cmd << buildCmd_beagle_labels_fit_AAL(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            
+            # Masks
+            puts "Building *beagle_masks_generate_from_labels* command " if opt.debug
+            cmd << buildCmd_beagle_masks_generate_from_labels(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            
+            # VBM
+            puts "Building *beagle_vbm_compute_individ_VBM* command " if opt.debug
+            cmd << buildCmd_beagle_vbm_compute_individ_VBM(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            puts "Building *beagle_vbm_quantification* command " if opt.debug
+            cmd << buildCmd_beagle_vbm_quantification(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            puts "Building *beagle_vbm_volumetric_visualization* command " if opt.debug
+            cmd << buildCmd_beagle_vbm_volumetric_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            
+            # CTA
+            puts "Building *beagle_thickness_compute_zscores* command " if opt.debug
+            cmd << buildCmd_beagle_thickness_compute_zscores(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            puts "Building *beagle_thickness_extract_surface_labels* command " if opt.debug
+            cmd << buildCmd_beagle_thickness_extract_surface_labels(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            puts "Building *beagle_thickness_compute_roi_statistics* command " if opt.debug
+            cmd << buildCmd_beagle_thickness_compute_roi_statistics(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            puts "Building *beagle_thickness_surface_visualization* command " if opt.debug
+            cmd << buildCmd_beagle_thickness_surface_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
 
-      }  # subject scans loop
-      
+         }  # subject scans loop
+      end
       
       # [C]  PiB Stages
       #
@@ -275,30 +362,33 @@ begin
       # ... keyname must be passed as an array
       scans = pib_subj_details.select_entries_by_keyname([keyname])
       
-      # any scans to process?
-      if ( scans.length < 1 ) then
-         puts sprintf("\n*** Info: To-be-run subject [%s] does not have any entries in the PiB configuration file", keyname)
-      else
-         scans.each{ |scan_item|
-            puts "Building *beagle_pib_initialization* command " if opt.debug
-            cmd << buildCmd_beagle_pib_initialization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-            puts "Building *beagle_pib_convert_ecat2mnc* command " if opt.debug
-            cmd << buildCmd_beagle_pib_convert_ecat2mnc(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-            puts "Building *beagle_pib_preprocess* command " if opt.debug
-            cmd << buildCmd_beagle_pib_preprocess(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-            puts "Building *beagle_pib_generate_masks* command " if opt.debug
-            cmd << buildCmd_beagle_pib_generate_masks(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-            puts "Building *beagle_pib_preprocess_verification* command " if opt.debug
-            cmd << buildCmd_beagle_pib_preprocess_verification(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-            puts "Building *beagle_pib_compute_ratios* command " if opt.debug
-            cmd << buildCmd_beagle_pib_compute_ratios(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-            puts "Building *beagle_pib_compute_SUVR* command " if opt.debug
-            cmd << buildCmd_beagle_pib_compute_SUVR(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-            puts "Building *beagle_pib_volumetric_visualization* command " if opt.debug
-            cmd << buildCmd_beagle_pib_volumetric_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-            puts "Building *beagle_pib_surface_visualization* command " if opt.debug
-            cmd << buildCmd_beagle_pib_surface_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-         }  # subject scans loop
+      stageName = 'pib'
+      if ( opt.stagesTbr.include?(stageName) ) then
+         # any scans to process?
+         if ( scans.length < 1 ) then
+            puts sprintf("\n*** Info: To-be-run subject [%s] does not have any entries in the PiB configuration file", keyname)
+         else
+            scans.each{ |scan_item|
+               puts "Building *beagle_pib_initialization* command " if opt.debug
+               cmd << buildCmd_beagle_pib_initialization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+               puts "Building *beagle_pib_convert_ecat2mnc* command " if opt.debug
+               cmd << buildCmd_beagle_pib_convert_ecat2mnc(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+               puts "Building *beagle_pib_preprocess* command " if opt.debug
+               cmd << buildCmd_beagle_pib_preprocess(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+               puts "Building *beagle_pib_generate_masks* command " if opt.debug
+               cmd << buildCmd_beagle_pib_generate_masks(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+               puts "Building *beagle_pib_preprocess_verification* command " if opt.debug
+               cmd << buildCmd_beagle_pib_preprocess_verification(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+               puts "Building *beagle_pib_compute_ratios* command " if opt.debug
+               cmd << buildCmd_beagle_pib_compute_ratios(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+               puts "Building *beagle_pib_compute_SUVR* command " if opt.debug
+               cmd << buildCmd_beagle_pib_compute_SUVR(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+               puts "Building *beagle_pib_volumetric_visualization* command " if opt.debug
+               cmd << buildCmd_beagle_pib_volumetric_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+               puts "Building *beagle_pib_surface_visualization* command " if opt.debug
+               cmd << buildCmd_beagle_pib_surface_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            }  # subject scans loop
+         end
       end
       
       
@@ -314,34 +404,40 @@ begin
       # ... keyname must be passed as an array
       scans = fdg_subj_details.select_entries_by_keyname([keyname])
       
-      # any scans to process?
-      if ( scans.length < 1 ) then
-         puts sprintf("\n*** Info: To-be-run subject [%s] does not have any entries in the FDG configuration file", keyname)
-      else
-         scans.each{ |scan_item|
-            puts "Building *beagle_fdg_initialization* command " if opt.debug
-            cmd << buildCmd_beagle_fdg_initialization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-            puts "Building *beagle_fdg_convert_native2mnc* command " if opt.debug
-            cmd << buildCmd_beagle_fdg_convert_native2mnc(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-            puts "Building *beagle_fdg_preprocess* command " if opt.debug
-            cmd << buildCmd_beagle_fdg_preprocess(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-            puts "Building *beagle_fdg_preprocess_verification* command " if opt.debug
-            cmd << buildCmd_beagle_fdg_preprocess_verification(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-            puts "Building *beagle_fdg_compute_ratios* command " if opt.debug
-            cmd << buildCmd_beagle_fdg_compute_ratios(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-            puts "Building *beagle_fdg_compute_SUVR* command " if opt.debug
-            cmd << buildCmd_beagle_fdg_compute_SUVR(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-            puts "Building *beagle_fdg_volumetric_visualization* command " if opt.debug
-            cmd << buildCmd_beagle_fdg_volumetric_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-            puts "Building *beagle_fdg_surface_visualization* command " if opt.debug
-            cmd << buildCmd_beagle_fdg_surface_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
-         }  # subject scans loop
+      stageName = 'fdg'
+      if ( opt.stagesTbr.include?(stageName) ) then
+         # any scans to process?
+         if ( scans.length < 1 ) then
+            puts sprintf("\n*** Info: To-be-run subject [%s] does not have any entries in the FDG configuration file", keyname)
+         else
+            scans.each{ |scan_item|
+               puts "Building *beagle_fdg_initialization* command " if opt.debug
+               cmd << buildCmd_beagle_fdg_initialization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+               puts "Building *beagle_fdg_convert_native2mnc* command " if opt.debug
+               cmd << buildCmd_beagle_fdg_convert_native2mnc(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+               puts "Building *beagle_fdg_preprocess* command " if opt.debug
+               cmd << buildCmd_beagle_fdg_preprocess(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+               puts "Building *beagle_fdg_preprocess_verification* command " if opt.debug
+               cmd << buildCmd_beagle_fdg_preprocess_verification(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+               puts "Building *beagle_fdg_compute_ratios* command " if opt.debug
+               cmd << buildCmd_beagle_fdg_compute_ratios(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+               puts "Building *beagle_fdg_compute_SUVR* command " if opt.debug
+               cmd << buildCmd_beagle_fdg_compute_SUVR(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+               puts "Building *beagle_fdg_volumetric_visualization* command " if opt.debug
+               cmd << buildCmd_beagle_fdg_volumetric_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+               puts "Building *beagle_fdg_surface_visualization* command " if opt.debug
+               cmd << buildCmd_beagle_fdg_surface_visualization(scan_item, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+            }  # subject scans loop
+         end
       end
       
       
       # [D]  Report generation
-      puts "Building *beagle_make_summary_report* command " if opt.debug
-      cmd << buildCmd_beagle_make_summary_report(keyname, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+      stageName = 'reporting'
+      if ( opt.stagesTbr.include?(stageName) ) then
+         puts "Building *beagle_make_summary_report* command " if opt.debug
+         cmd << buildCmd_beagle_make_summary_report(keyname, opt, settings, verbose=opt.verbose, debug=opt.debug) + "\n"
+      end
 
       # print finish date/time
       cmd << "date\n"
