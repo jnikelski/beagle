@@ -56,7 +56,7 @@ LORIS_AGGREGATED_SETTINGS_FILE_EXTENSION=".json"
 # Loris (general) options (Use absolute paths only)
 #
 # ... what is our verion of Loris? 
-LORIS_VERSION="2017.1"
+LORIS_VERSION="3.1"
 #
 
 

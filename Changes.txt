@@ -1,3 +1,8 @@
+beagle_3.1
+* added driver args to permit running a subset of pipeline stages
+* added code to the report generator to ensure that all tables included in the report are also written 
+  out as csv files in the appropriate directories
+
 beagle_3.0.0
 * decided to move over to semVer versioning
 * Mostly Civet-related refactoring
