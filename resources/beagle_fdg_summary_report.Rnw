@@ -159,8 +159,11 @@ ratios.df$side <- factor(ratios.df$side, levels=c("_L","_R"), labels=c("Lh","Rh"
 suvr.df <- ratios.df[ratios.df$LabelName=='SUVR',]
 suvr.df <- subset(suvr.df,,select=c(Description, nVoxels, suvr))
 
-# change column name from "suvr" to "SUVR"
+# change column name from "suvr" to "SUVR", and write out as a csv file
 names(suvr.df)[match("suvr", names(suvr.df))] <- "SUVR"
+options(scipen=1, digits=8)
+csvFilename_out_fullPath <- file.path(fdg_ratios_subdir_fullPath, "ReportTable_FDG_SUVR_Values.csv")
+write.csv(suvr.df, file = csvFilename_out_fullPath, row.names = FALSE,)
 
 # format the SUVR summary table for printing
 suvr.table <- xtable(suvr.df)
@@ -179,12 +182,15 @@ ratiosX.df <- subset(ratiosX.df,,select=c(Description, side, nVoxels, suvr))
 # change column name from "suvr" to "ratio"
 names(ratiosX.df)[match("suvr", names(ratiosX.df))] <- "ratio"
 
-# sort by ratio value
+# sort by ratio value and write out csv file
 ratiosX.df <- ratiosX.df[order(ratiosX.df$ratio, decreasing=FALSE),]
+options(scipen=1, digits=8)
+csvFilename_out_fullPath <- file.path(fdg_ratios_subdir_fullPath, "ReportTable_FDG_Ratio_Values_Sorted_in_Ascending_Order.csv")
+write.csv(ratiosX.df, file = csvFilename_out_fullPath, row.names = FALSE,)
 
 # add some extra formatting
 ratios.table <- xtable(ratiosX.df)
-caption(ratios.table) <- "FDG Ratio Values sorted in ascending order"
+caption(ratios.table) <- "FDG Ratio Values Sorted in Ascending Order"
 label(ratios.table) <- "tab:fdg_ratios"
 digits(ratios.table)[c(5)] <- 3
 align(ratios.table) <- c("l","l","l","r","r")
