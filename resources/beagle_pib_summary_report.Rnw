@@ -183,6 +183,10 @@ suvr.df <- subset(suvr.df,,select=c(Description, nVoxels, suvr))
 
 # change column name from "suvr" to "SUVR"
 names(suvr.df)[match("suvr", names(suvr.df))] <- "SUVR"
+# write out as a csv file
+options(scipen=1, digits=8)
+csvFilename_out_fullPath <- file.path(pib_ratios_subdir_fullPath, "ReportTable_PiB_SUVR_Values.csv")
+write.csv(suvr.df, file = csvFilename_out_fullPath, row.names = FALSE,)
 
 # format the SUVR summary table for printing
 suvr.table <- xtable(suvr.df)
@@ -201,12 +205,15 @@ ratiosX.df <- subset(ratiosX.df,,select=c(Description, side, nVoxels, suvr))
 # change column name from "suvr" to "ratio"
 names(ratiosX.df)[match("suvr", names(ratiosX.df))] <- "ratio"
 
-# sort by ratio value
+# sort by ratio value and write out as a csv file
 ratiosX.df <- ratiosX.df[order(ratiosX.df$ratio, decreasing=TRUE),]
+options(scipen=1, digits=8)
+csvFilename_out_fullPath <- file.path(pib_ratios_subdir_fullPath, "ReportTable_PiB_Ratio_Values_Sorted_in_Descending_Order.csv")
+write.csv(ratiosX.df, file = csvFilename_out_fullPath, row.names = FALSE,)
 
 # add some extra formatting
 ratios.table <- xtable(ratiosX.df)
-caption(ratios.table) <- "PiB Ratio Values sorted in descending order"
+caption(ratios.table) <- "PiB Ratio Values Sorted in Descending Order"
 label(ratios.table) <- "tab:pib_ratios"
 digits(ratios.table)[c(5)] <- 3
 align(ratios.table) <- c("l","l","l","r","r")
