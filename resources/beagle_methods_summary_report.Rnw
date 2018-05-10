@@ -90,34 +90,48 @@ In order to permit analysis by region of interest (ROI), the 81924 generated z-s
 
 
 
-
 \section{PiB PET Imaging}
 \label{pib_methods}
-Subjects were scanned according to one of two protocols. In the first protocol, subjects were placed into the scanner, given the PiB bolus, and then scanned for a full 90 minutes, during which time 34 frames were collected. Since the PiB signal is much stronger immediately following bolus administration, frame durations are not of equal length, but rather, earlier frames are shorter, with frame durations increasing over the scanning session.  For protocol 1, the shortest frame duration was 15 seconds and the longest was 10 minutes. As we are more interested in PiB retention rather than the initial uptake, it is the later frames that are of greatest interest to us.
+Scanning at the HCLab follows either of 2 protocols -- a \textit{long} protocol and a \textit{shortened} protocol. During the long protocol (which is no longer in use), subjects were placed into the scanner, given the PiB bolus, and then scanned for a full 90 minutes, during which time \textbf{34} frames were collected. Since the PiB signal is much stronger immediately following bolus administration, frame durations are not of equal length, but rather, earlier frames are shorter, with frame durations increasing over the scanning session.  The shortest frame duration was 15 seconds and the longest was 10 minutes. As we are more interested in PiB retention rather than the initial uptake, it is the later frames that are of greatest interest to us.
 
-The second protocol resulted from the need to shorten scanning times, as some of our elderly patients found a 90 minute scanning time to be too long. As such the second protocol implemented the following modifications:
+The shortened protocol was intoduced when the literature suggested that similar results as the long protocol could be obtained using a shortened protocol, requiring the subjects to spend less time in the scanner. Amount of time in the scanner is particularly important when scanning elderly or demented patients, as even many of the elderly patients found a 90 minute scanning time to be too long. As such the second protocol implemented the following modifications:
 
 \begin{enumerate}
   \item The PiB bolus was administered, but scanning was only initiated 50 minutes post-injection. Not capturing the early frames prevented automatic motion correction to compensate for inter-frame motion, but otherwise had no impact on the ratios.
-  \item Scanning resulted in the collection of 7 frames, with frame durations varying bwteen 5 and 10 minutes.
-
+  \item Scanning resulted in the collection of \textbf{7} frames in 40 minutes, with frame durations varying between 5 and 10 minutes.
 \end{enumerate}
 
-Of note is that the 7 frames collected in 40 minutes of scan time under protocol 2, should provide equivalent signal to the last 40 minutes of scan time under protocol 1 (5 frames ).
+Of note is that the 7 frames collected in 40 minutes of scan time under the shortened protocol, should provide equivalent signal to the last 40 minutes of scan time under the original long protocol (5 frames ).
 
 
 \subsection{PiB-Specific Preprocessing}
 \label{pib_preprocesing}
 The PiB volume was first aligned to the subject's native anatomy (a T1 scan) using a 6-parameter, rigid-body fit.  This was then followed by registration of both native-space volumes to the MNI symmetrical template, using a 12-parameter linear transformation.  The resultant stereotactic-space dynamic volume was then blurred with a 6-mmm full-width at half-maximum Gaussian filter in order to increase signal-to-noise, and minimize the effects of random high-frequency spikes in the data.  Blurring filter width was minimized in order to prevent the blurring of the signal within the cerebellar gray and white matter.  Such over-blurring would contaminate the signal within the cerebellar gray with the much higher signal found within the cerebellar white, thus serving to depress the overall PiB ratio values.\footnote{It should be noted that researchers utilizing the entire cerebellum (gray and white matter) will likely obtain much higher cerebellar gray reference values, which will depress their ratios.  Thus, the commonly used ratio cut-off value of 1.5 is likely to be \emph{too low} for our ratios.  In other words, if we set our theshold to 1.5, we will probably see a lot more PiB than other reseachers have found.  In reality, we should probably determine our threshold empirically, perhaps, by plotting the distributions of various ratios, and noting which appears to do the best job of separating our normal controls from the AD subjects.  We need to think about this a bit more.}
 
-Cerebellar masks, which were created by the MNI pipeline, were then used in order to provide us with a measure of PiB uptake in the cerebellar gray matter.  Specifically, the pipeline's tissue classification stage produces both white and gray matter masks for each subject.  The gray matter mask was then logically combined with a cerebellar mask, to produce a cerebellar gray matter mask for each subject.  Cerebellar gray matter reference values were then obtained at each frame (time point) in the dynamic volume, by averaging the intensity values of those voxels that fell within the cerebellar gray matter mask.
 
+\subsection{Reference Tissues}
+\label{pib_ref_tissues}
+Reference tissues are used to provide us with a measure of PiB uptake within that tissue, against which PiB uptake within all other tissues are compared. As such, the reference tissue serves to provide us with a normal and expected baseline of degree of PiB uptake. Two reference tissues were used in the computation of the voxel-level PiB ratios: the cerebellar gray and the cortical white matter. Both reference tissues are used in the literature, and computation of both permits us to compare the suitability of each reference. 
 
+The cerebellar gray matter mask was created by logically combining (\textit{anding}) the cerebellar and gray matter masks created by the Civet pipeline. Similarly, the cortical white matter mask was created by logically combining the Civet-generated brain mask with the white matter mask, resulting in a mask containing white matter, with the cerebellar and brainstem white matter removed.
 
+Reference tissue-specific reference values were then obtained at each frame (time point) in the dynamic volume, by averaging the intensity values of those voxels that fell within the reference tissue-specific mask. So, for example, when using the shortened protocol, this process would yield 7 averaged PiB values (one for each frame) for each reference tissue.
 
 
 \subsection{PiB Ratios Computation}
-Ratio values, which were computed using all 7 frames under protocol 2, and the last 5 frames under protocol 1 (50 minutes post-injection; 40 minute total scan time), were computed at each voxel by a two-stage process.  First, the area under the curve (AUC) across time was computed for the cerebellar gray matter reference values, and at each voxel within the volume. Ratios were then computed by dividing each voxel's AUC value by the cerebellar gray AUC. Thus, a ratio value of 1.00 can be said to reflect the cerebellar gray with regard to the time-course of PiB retention;  values greater than 1.00 are indicative of areas that retain PiB more than the cerebellar reference.  A convenience cut-off of 1.5 is commonly used, however, this value is strongly influenced by the method by which the cerebellar gray matter reference values are computed.
+Ratio values, which were computed using all 7 frames under the shortened protocol, and the last 5 frames under the long protocol (50 minutes post-injection; 40 minute total scan time), were computed at each voxel by a three-stage process:  
+
+\begin{enumerate}
+  \item The area under the curve (AUC) across time was computed at each voxel within the dynamic PiB volume.
+  \item A single AUC value was computed for each reference tissue, using the appropriate reference tissue-specific mask (see above).
+  \item Ratios were computed by dividing each voxel's AUC value by the reference tissue AUC, yielding one ratio volume for each reference tissue. 
+\end{enumerate}
+
+The interpretation of the ratio value is similar, regardless of the reference tissue used. For example, a ratio value of 1.00 at a given voxel suggests that the PiB retention at that voxel reflects that of the reference tissue;  values greater than 1.00 are indicative of areas that retain PiB more than the reference. 
+
+Interpretation of the ratio magnitude and thus the threshold for significance is, however, affected by reference tissue choice. For example, a ratio of 1.00 using a cerebellar gray matter reference would be considered to be within the normal range of expected values, with significance thresholds commonly set to 1.25 when using a cerebellar gray matter reference. 
+
+In contrast, given that retention of PiB within white matter is much greater than that in gray matter, a ratio value of 1.00 within a gray matter voxel when using a cortical white matter reference would clearly indicate significant PiB retention within that tissue. As such, use of a cortical white matter reference requires a different and considerably lower threshold. Current experience suggests that a value of approximately 0.80 (80\% of white matter) is likely in the right neighbourhood -- although we need to investigate this further.
 
 \subsection{SUVR Computation}
 \label{pib_suvr_computation}

@@ -29,6 +29,9 @@ cta_subdir <- paste(analysis_type, scan_date, sep="-")
 cta_subdir_fullPath <- file.path(rootDir, keyname, cta_subdir)
 cta_images_subdir_fullPath <- file.path(cta_subdir_fullPath, 'images')
 
+# create a unique Id to write to csv file
+uniqueId <- paste(keyname, cta_subdir, sep="-")
+
 
 # generate the image filenames (thickness in mm)
 img_averageSurfaceViz_mm_filename = paste(keyname, "_thickness_mm_averageSurfaceViz.png", sep="")
@@ -82,10 +85,12 @@ thickness_summary.df$max <- tapply(thickness.df$thickness, thickness.df$side, ma
 thickness_summary.df$mean <- tapply(thickness.df$thickness, thickness.df$side, mean)
 thickness_summary.df$stdev <- tapply(thickness.df$thickness, thickness.df$side, sd)
 thickness_summary.df$median <- tapply(thickness.df$thickness, thickness.df$side, median)
-# write out as a csv file
+
+# write out as a csv file -- after appending 3 identifying columns 
 options(scipen=1, digits=8)
 csvFilename_out_fullPath <- file.path(cta_subdir_fullPath, "ReportTable_Cortical_Thickness_by_Hemisphere.csv")
-write.csv(thickness_summary.df, file = csvFilename_out_fullPath, row.names = FALSE,)
+thickness_summary_appended.df <- cbind(uniqueId, keyname=keyname, dirname=cta_subdir, thickness_summary.df)
+write.csv(thickness_summary_appended.df, file = csvFilename_out_fullPath, row.names = FALSE,)
 
 # prepare the thickness table for printing
 # add some extra formatting
@@ -172,10 +177,12 @@ zscores_summary.df$max <- tapply(zscores.df$zscores, zscores.df$side, max)
 zscores_summary.df$mean <- tapply(zscores.df$zscores, zscores.df$side, mean)
 zscores_summary.df$stdev <- tapply(zscores.df$zscores, zscores.df$side, sd)
 zscores_summary.df$median <- tapply(zscores.df$zscores, zscores.df$side, median)
-# write out as a csv file
+
+# write out as a csv file -- after appending 3 identifying columns 
 options(scipen=1, digits=8)
 csvFilename_out_fullPath <- file.path(cta_subdir_fullPath, "ReportTable_Z-Scores_by_Hemisphere.csv")
-write.csv(zscores_summary.df, file = csvFilename_out_fullPath, row.names = FALSE,)
+zscores_summary_appended.df <- cbind(uniqueId, keyname=keyname, dirname=cta_subdir, zscores_summary.df)
+write.csv(zscores_summary_appended.df, file = csvFilename_out_fullPath, row.names = FALSE,)
 
 # prepare the z-scores table for printing
 # add some extra formatting
@@ -271,10 +278,12 @@ thicknessX.df <- subset(thickness.df,,select=c(Description, side, size:z_stdev))
 # change some column names to something better
 names(thicknessX.df)[4] <- "mean"
 names(thicknessX.df)[5] <- "stdev"
-# write out as a csv file
+
+# write out as a csv file -- after appending 3 identifying columns 
 options(scipen=1, digits=8)
 csvFilename_out_fullPath <- file.path(cta_subdir_fullPath, "ReportTable_Analysis_by_Region_of_Interest.csv")
-write.csv(thicknessX.df[,c(1:7)], file = csvFilename_out_fullPath, row.names = FALSE,)
+thicknessX_appended.df <- cbind(uniqueId, keyname=keyname, dirname=cta_subdir, thicknessX.df[,c(1:7)])
+write.csv(thicknessX_appended.df, file = csvFilename_out_fullPath, row.names = FALSE,)
 
 
 # prepare the ratios table for printing

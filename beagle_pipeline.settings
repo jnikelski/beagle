@@ -35,7 +35,7 @@
 #
 # number of settings in this file (INCLUDING this value)
 # ... this is used to validate the file structure 
-NBR_SETTINGS="73"
+NBR_SETTINGS="88"
 
 
 
@@ -56,7 +56,7 @@ LORIS_AGGREGATED_SETTINGS_FILE_EXTENSION=".json"
 # Loris (general) options (Use absolute paths only)
 #
 # ... what is our verion of Loris? 
-LORIS_VERSION="3.1"
+LORIS_VERSION="3.2"
 #
 
 
@@ -65,19 +65,18 @@ LORIS_VERSION="3.1"
 #
 
 # Civet version that was used to generate the anatomically-derived volumes?
-#CIVET_VERSION="1.1.9"
+# ... This should be overridden in the Beagle *runConfig* file.
 CIVET_VERSION="1.1.11"
 
 # location (fullpath) of Civet output root directory
-#CIVET_ROOT_DIR="/data/raid01/adni1Data/pipeOut"
+# ... This should be overridden in the Beagle *runConfig* file.
 CIVET_ROOT_DIR="/data/raid01/civetData/civetVersion_1.1.11/scans"
 
-# Civet filenaming prefix
-#CIVET_PREFIX="ADNI"
+# Civet filenaming prefix. 
+# ... This should be overridden in the Beagle *runConfig* file.
 CIVET_PREFIX="HCLab"
 
 # append scanDate to subject's keyname to create scanID (used for subject directory naming) -- ON/OFF
-#CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME="OFF"
 CIVET_SCANID_APPEND_SCANDATE_TO_KEYNAME="ON"
 
 # tissue classification tissue types
@@ -94,19 +93,49 @@ CIVET_SURFACE_NO_OF_VERTICES_WHOLEBRAIN="81924"
 
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+# Beagle anatomical-related options (Use absolute paths only when required)
+#
+# ... mask of the left and right cerebellum from the subject's labelled AAL volume. Stored in sunject's *Masks* dir
+MASKS_AAL_CEREBELLUM_FILENAME="aal_cerebellum_mask_allTissues.mnc"
+# ... gm, wm, and combined masks created by ANDing the above AAL cerebellum mask and the respective tissue classification volumes
+MASKS_CEREBELLUM_GM_FILENAME="cerebellum_mask_gm.mnc"
+MASKS_CEREBELLUM_WM_FILENAME="cerebellum_mask_wm.mnc"
+MASKS_CEREBELLUM_GMWM_FILENAME="cerebellum_mask_gmwm.mnc"
+#
+# ... wholebrain masks, including cerebellum and brainstem 
+MASKS_WHOLEBRAIN_CSF_FILENAME="wholeBrain_csf_mask.mnc"
+MASKS_WHOLEBRAIN_GM_FILENAME="wholeBrain_gray_matter_mask.mnc"
+MASKS_WHOLEBRAIN_WM_FILENAME="wholeBrain_white_matter_mask.mnc"
+#
+# ... other masks
+MASKS_CORTICAL_WM_FILENAME="cortical_white_matter_mask.mnc"
+
+
+
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 # PiB-related options (Use absolute paths only)
 # 
-#
+# assorted filename suffices
+PIB_4d_VOLUME_SUFFIX="_talAligned_filtered.mnc"
+PIB_AUC_VOLUME_FILENAME_SUFFIX="_pibAucValues_noMask.mnc"
+
+# as we allow MULTIPLE REFERENCE TISSUES, the following keywords use comma-separated values for each ref tissue
+# Ref Tissue 1: cerebellar gray matter
+# Ref Tissue 2: cortical white matter
+PIB_REF_TISSUE_IDENTIFIERS="refCerebGM,refCorticalWM"
+PIB_REF_TISSUE_DESCRIPTIONS="Cerebellar Gray Matter,Cortical White Matter"
+PIB_REF_MASK_CLIPPED_BY_MEAN_ACTIVITY_VOLSUFFIX="_cerebGmMask_maskedBy_meanPibActivity.mnc,_corticalWmMask_maskedBy_meanPibActivity.mnc"
+
 # display thresholds for mincthumbs
 # ... note that I'm using a rather higher ceiling, since the upper part
 # ... of the mincthumbs colormap is white ... which makes it difficult
 # ... to see on an MRI. Thus, I do not want to reach the top end of
 # ... the colormap, and therefore the higher ceiling.
-PIB_VOLUMETRIC_VIZ_FLOOR="1.5"
-PIB_VOLUMETRIC_VIZ_CEILING="3.5"
+PIB_VOLUMETRIC_VIZ_FLOOR="1.25,0.7"
+PIB_VOLUMETRIC_VIZ_CEILING="3.5,2.0"
 #
-PIB_SURFACE_VIZ_FLOOR="1.5"
-PIB_SURFACE_VIZ_CEILING="2.5"
+PIB_SURFACE_VIZ_FLOOR="1.25,0.7"
+PIB_SURFACE_VIZ_CEILING="2.5,2.0"
 
 # ... filenaming prefix
 PIB_FILENAMING_PREFIX="HCLab"
@@ -225,6 +254,11 @@ AAL_LABELS_VOLUME="ldiAdni200_AALlabels_50pctBgHandicap.mnc"
 AAL_LABELS_VBM_VOLUME="ldiAdni200_AALlabels_50pctBgHandicap.mnc"
 # ... label volume used for surface visualization only
 AAL_LABELS_SURFACE_VIZ_VOLUME="ldiAdni200_AALlabels_99pctBgHandicap.mnc"
+#
+# define the range of AAL label values comprising the cerebellum
+AAL_CEREBELLUM_LABEL_RANGE=91,116
+#
+AAL_LABELLED_SUBJECT_VOLUME_SUFFIX="_t1_final_AAL120Labels.mnc"
 
 
 

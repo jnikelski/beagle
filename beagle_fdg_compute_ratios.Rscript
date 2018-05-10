@@ -133,7 +133,7 @@ CIVET_VERSION <- settings$CIVET_VERSION
 FDG_VOLUME_SUFFIX <- "_talAligned_06mmBlur.mnc"
 BINARIZED_MASKED_FDGVOL_SUFFIX = '_binarized_masked_fdgVol.mnc'
 #
-GM_MASK_VOLNAME <- "wholeBrain_gray_matter_mask.mnc"
+GM_MASK_VOLNAME <- settings$MASKS_WHOLEBRAIN_GM_FILENAME
 GM_MASK_VOLNAME_FULLPATH <- file.path(masksDir, GM_MASK_VOLNAME)
 
 

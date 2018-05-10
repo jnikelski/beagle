@@ -108,7 +108,13 @@ begin
    LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
    CIVET_VERSION = settings['CIVET_VERSION']
    PIB_CEREB_THOLD_PCT = settings['PIB_CEREB_THOLD_PCT'].to_f
-
+   PIB_MEAN3d_FILENAME_SUFFIX = '_mean_talAligned'
+   MASKS_CEREBELLUM_GM_FILENAME = settings['MASKS_CEREBELLUM_GM_FILENAME']
+   #
+   # reference tissue stuff
+   PIB_REF_TISSUE_IDENTIFIERS = settings['PIB_REF_TISSUE_IDENTIFIERS'].split(',')
+   NO_OF_REFERENCE_TISSUES = PIB_REF_TISSUE_IDENTIFIERS.count()
+   PIB_REF_MASK_CLIPPED_BY_MEAN_ACTIVITY_VOLSUFFIX = settings['PIB_REF_MASK_CLIPPED_BY_MEAN_ACTIVITY_VOLSUFFIX'].split(',')
 
    # set some useful values
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
@@ -124,7 +130,7 @@ begin
    #
    masks_dir = 'masks-' + opt.civetScanDate
    masks_dir_fullPath = File.join(keyname_dir_fullPath, masks_dir)
-   CEREB_GM_MASK_VOLUME_FULLPATH = File.join(masks_dir_fullPath, 'cerebellum_mask_gm.mnc')
+   CEREB_GM_MASK_VOLUME_FULLPATH = File.join(masks_dir_fullPath, MASKS_CEREBELLUM_GM_FILENAME)
 
 
 
@@ -183,11 +189,11 @@ begin
    logger.log_message(progname, opt.keyname, 'PiB', opt.scanDate, 'nVox_in_cerebGMmask', gmMaskCount)
    
    
-   # get the total number of voxels comprising the adjusted cerebellar GM mask
-   adjusted_cereb_gm_mask_volname = opt.keyname + "_cerebGMmask_maskedBy_meanPibActivity.mnc"
-   adjusted_cereb_gm_mask_volname_fullPath = File.join(pibMasks_dir_fullPath, adjusted_cereb_gm_mask_volname)
+   # get the total number of voxels comprising the clipped cerebellar GM mask
+   clipped_cereb_gm_mask_volname = opt.keyname + PIB_REF_MASK_CLIPPED_BY_MEAN_ACTIVITY_VOLSUFFIX[0]
+   clipped_cereb_gm_mask_volname_fullPath = File.join(pibMasks_dir_fullPath, clipped_cereb_gm_mask_volname)
    #
-   cmd = "mincstats #{adjusted_cereb_gm_mask_volname_fullPath}"
+   cmd = "mincstats #{clipped_cereb_gm_mask_volname_fullPath}"
    puts "\n** Executing command: #{cmd} " if opt.verbose
    cmdResult = `#{cmd}`
    # get the sum of all mask voxels
@@ -231,10 +237,16 @@ begin
    # ... so that we can use meaningful threshold values
    #
    puts "\n** Image intensity normalization of verification image ..."   if opt.verbose
+   mncVolIn_filename = opt.keyname + PIB_MEAN3d_FILENAME_SUFFIX + '.mnc'
+   mncVolIn_filename_fullpath = File.join(pibTal_dir_fullPath, mncVolIn_filename)
+   #
+   mncVolOut_filename = opt.keyname + PIB_MEAN3d_FILENAME_SUFFIX + '_normalized.mnc'
+   mncVolOut_filename_fullpath = File.join(pibTmp_dir_fullPath, mncVolOut_filename)
+   #
    cmd = "inormalize -clobber -verbose   "
    cmd << "-const2 0.0 95.0  -range 5.0  "
-   cmd << "#{pibTal_dir_fullPath}/#{opt.keyname}_mean_talAligned.mnc  "
-   cmd << "#{pibTmp_dir_fullPath}/#{opt.keyname}_mean_talAligned_normalized.mnc    "
+   cmd << "#{mncVolIn_filename_fullpath}  "
+   cmd << "#{mncVolOut_filename_fullpath}  "
    do_cmd(cmd, opt.verbose, opt.fake)
 
 
@@ -243,14 +255,20 @@ begin
    anatomical_underlay_volume = civet_getFilenameStxT1(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt, fullpath:false, checkExistence:true)
    #
    puts "\n** Create verification image ..."   if opt.verbose
+   pdfOut_filename = opt.keyname + PIB_MEAN3d_FILENAME_SUFFIX + '.pdf'
+   pdfOut_filename_fullpath = File.join(pibImages_dir_fullPath, pdfOut_filename)
+   #
+   mncOut_filename = opt.keyname + PIB_MEAN3d_FILENAME_SUFFIX + '_normalized.mnc'
+   mncOut_filename_fullpath = File.join(pibTmp_dir_fullPath, mncOut_filename)
+   #
    cmd = "mincthumbs -v   "
    cmd << "-tthresh   30  "
    cmd << "-opacity .6  "
    cmd << "-tceiling  100  "
    cmd << "-contrast 1 "
    cmd << "-pos  "
-   cmd << "-out #{pibImages_dir_fullPath}/#{opt.keyname}_mean_talAligned.pdf    "
-   cmd << "#{pibTmp_dir_fullPath}/#{opt.keyname}_mean_talAligned_normalized.mnc   "
+   cmd << "-out #{pdfOut_filename_fullpath}  "
+   cmd << "#{mncOut_filename_fullpath}  "
    cmd << "#{visualization_dir}/#{anatomical_underlay_volume} "
    do_cmd(cmd, opt.verbose, opt.fake)
    #

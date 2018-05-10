@@ -24,6 +24,9 @@ fdg_images_subdir_fullPath <- file.path(fdg_subdir_fullPath, 'images')
 fdg_tal_subdir_fullPath <- file.path(fdg_subdir_fullPath, 'tal')
 fdg_ratios_subdir_fullPath <- file.path(fdg_subdir_fullPath, 'ratios')
 
+# ... create a unique Id to write to csv file
+uniqueId <- paste(keyname, fdg_subdir, sep="-")
+
 
 # now create a pleasing full subdir path to the Beagle *subject/masks-19000000* directory
 masks_dirname <- paste('masks', civet_scan_date, sep="-")
@@ -41,7 +44,7 @@ ratios_volume_fullPath <- file.path(fdg_subdir_fullPath, ratios_volume)
 
 
 # read cerebellar GM mask
-cerebellar_gm_mask_filename <- "cerebellum_mask_gm.mnc"
+cerebellar_gm_mask_filename <- settings$MASKS_CEREBELLUM_GM_FILENAME
 cerebellar_gm_mask_filename_fullPath <- file.path(masks_subdir_fullPath, cerebellar_gm_mask_filename)
 cerebellar_gm_mask <- mincIO.readVolume(cerebellar_gm_mask_filename_fullPath, volumeType='mask')
 cerebellar_gm_mask_nVoxels <- sum(cerebellar_gm_mask)
@@ -159,11 +162,12 @@ ratios.df$side <- factor(ratios.df$side, levels=c("_L","_R"), labels=c("Lh","Rh"
 suvr.df <- ratios.df[ratios.df$LabelName=='SUVR',]
 suvr.df <- subset(suvr.df,,select=c(Description, nVoxels, suvr))
 
-# change column name from "suvr" to "SUVR", and write out as a csv file
+# change column name from "suvr" to "SUVR", and write out as a csv file -- after appending 3 identifying columns 
 names(suvr.df)[match("suvr", names(suvr.df))] <- "SUVR"
 options(scipen=1, digits=8)
 csvFilename_out_fullPath <- file.path(fdg_ratios_subdir_fullPath, "ReportTable_FDG_SUVR_Values.csv")
-write.csv(suvr.df, file = csvFilename_out_fullPath, row.names = FALSE,)
+suvr_appended.df <- cbind(uniqueId, keyname=keyname, dirname=fdg_subdir, suvr.df)
+write.csv(suvr_appended.df, file = csvFilename_out_fullPath, row.names = FALSE,)
 
 # format the SUVR summary table for printing
 suvr.table <- xtable(suvr.df)
@@ -182,11 +186,12 @@ ratiosX.df <- subset(ratiosX.df,,select=c(Description, side, nVoxels, suvr))
 # change column name from "suvr" to "ratio"
 names(ratiosX.df)[match("suvr", names(ratiosX.df))] <- "ratio"
 
-# sort by ratio value and write out csv file
+# sort by ratio value and write out csv file -- after appending 3 identifying columns 
 ratiosX.df <- ratiosX.df[order(ratiosX.df$ratio, decreasing=FALSE),]
 options(scipen=1, digits=8)
 csvFilename_out_fullPath <- file.path(fdg_ratios_subdir_fullPath, "ReportTable_FDG_Ratio_Values_Sorted_in_Ascending_Order.csv")
-write.csv(ratiosX.df, file = csvFilename_out_fullPath, row.names = FALSE,)
+ratiosX_appended.df <- cbind(uniqueId, keyname=keyname, dirname=fdg_subdir, ratiosX.df)
+write.csv(ratiosX_appended.df, file = csvFilename_out_fullPath, row.names = FALSE,)
 
 # add some extra formatting
 ratios.table <- xtable(ratiosX.df)

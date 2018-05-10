@@ -1,3 +1,8 @@
+beagle_3.2
+* added infrastructure to permit multiple reference tissues during PiB processing
+* added *cortical white matter* as the second reference tissue
+* added extra identifying columns to the csv files introduced with Beagle 3.1
+
 beagle_3.1
 * added driver args to permit running a subset of pipeline stages
 * added code to the report generator to ensure that all tables included in the report are also written 
