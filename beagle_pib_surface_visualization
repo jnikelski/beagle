@@ -134,12 +134,9 @@ begin
 
 
    # set volumetric visualization thresholds
-   PIB_SURFACE_VIZ_FLOOR = settings['PIB_SURFACE_VIZ_FLOOR']
-   PIB_SURFACE_VIZ_CEILING = settings['PIB_SURFACE_VIZ_CEILING']
+   PIB_SURFACE_VIZ_FLOOR = settings['PIB_SURFACE_VIZ_FLOOR'].split(',')
+   PIB_SURFACE_VIZ_CEILING = settings['PIB_SURFACE_VIZ_CEILING'].split(',')
    puts "Surface visualization min/max: #{PIB_SURFACE_VIZ_FLOOR}/#{PIB_SURFACE_VIZ_CEILING}" if opt.debug
-
-   # define some useful constants
-   RATIOS_VOLUME_PATTERN = '*_pibRatios_*.mnc'
 
    # set some useful values/paths
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
@@ -149,6 +146,17 @@ begin
    pibTmp_dir_fullPath = File.join(pib_dir_fullPath, 'tmp')
    pibLogs_dir_fullPath = File.join(pib_dir_fullPath, 'logs')
    pibImages_dir_fullPath = File.join(pib_dir_fullPath, 'images')
+
+
+   # set reference tissue-related values. First, parse the multi-entry input lines into character arrays
+   PIB_REF_TISSUE_IDENTIFIERS = settings['PIB_REF_TISSUE_IDENTIFIERS'].split(',')
+   PIB_REF_TISSUE_DESCRIPTIONS = settings['PIB_REF_TISSUE_DESCRIPTIONS'].split(',')
+   #
+   # create vector of input ratio volume names
+   ratio_volumes_fullpath = []
+   ratio_volumes_fullpath.push(File.join(pibRatios_dir_fullPath, opt.keyname + "_pibRatios_" + PIB_REF_TISSUE_IDENTIFIERS[0] + "_noMask.mnc"))
+   ratio_volumes_fullpath.push(File.join(pibRatios_dir_fullPath, opt.keyname + "_pibRatios_" + PIB_REF_TISSUE_IDENTIFIERS[1] + "_noMask.mnc"))
+   puts ratio_volumes_fullpath if opt.debug
 
 
 
@@ -174,6 +182,7 @@ begin
       puts opts
       exit
    end
+
    # both subject-specific surface objects entered?
    if ( opt.indivLhSurface.empty? or opt.indivRhSurface.empty? ) then
       puts "\n*** Error: One or both of the subject-specific surface objects have not been entered."
@@ -181,13 +190,15 @@ begin
       exit
    end
 
-   # find all ratio volumes -- must be at least one
-    ratio_volumes = match_glob_in_dir(pibRatios_dir_fullPath, pattern=RATIOS_VOLUME_PATTERN, return_matches=true, verbose=true)
-   if ( ratio_volumes.length < 1 ) then
-      puts sprintf("!!! Error: No PiB ratio volumes found for for %s-%s", opt.keyname, opt.scanDate)
-      puts opts
-      exit
-   end
+   # ratio volume exists for each reference tissue type?
+   ratio_volumes_fullpath.each{ |ratioVolume_fullPath|
+      if ( !File.exist?(ratioVolume_fullPath) || !File.file?(ratioVolume_fullPath) ) then
+         puts sprintf("!!! Error: PiB ratio volume not found for for %s-%s", opt.keyname, opt.scanDate)
+         puts sprintf("!!!        Expected filename: %s", ratioVolume_fullPath)
+         puts opts
+         exit
+      end
+   }
 
    # check if the temporary working directory exists; if not, create it
    # Note: if often clear out the tmp dir at end of processing by 
@@ -214,15 +225,7 @@ begin
    # create the various left and right hemisphere surface image components
    # ... LOOPING over all ratio volumes
    #
-   ratio_volumes.each{ |ratioVolume_fullPath|
-
-      # in order to name the output files correctly, we need to 
-      # extract the reference tissue names from the ratio filenames
-      # e.g. filename: p028_pibRatios_refGlobalWM_noMask.mnc
-      #      ... so, we want the 3rd component
-      ratio_filename = File.basename(ratioVolume_fullPath)
-      refTissue = ratio_filename.split('_')[2]
-
+   ratio_volumes_fullpath.each_index{ |ratioVolume_ndx|
 
       # Render onto AVERAGE surface first
       #
@@ -236,24 +239,24 @@ begin
 
       # create LH surface components
       cmd = "hclab_make_surface_images   -v "
-      cmd << "--valueRange=#{PIB_SURFACE_VIZ_FLOOR},#{PIB_SURFACE_VIZ_CEILING}  "   # visualization threshold - low cutoff
-      cmd << "--colorMap=#{opt.colorMap}  "     # maximum absolute value in the color coding
-      cmd << "#{ratioVolume_fullPath}  "        # ratio volume
-      cmd << "#{opt.avgLhSurface}  "            # surface to render upon
+      cmd << "--valueRange=#{PIB_SURFACE_VIZ_FLOOR[ratioVolume_ndx]},#{PIB_SURFACE_VIZ_CEILING[ratioVolume_ndx]}  "   # visualization threshold - low cutoff
+      cmd << "--colorMap=#{opt.colorMap}  "                       # maximum absolute value in the color coding
+      cmd << "#{ratio_volumes_fullpath[ratioVolume_ndx]}  "       # ratio volume
+      cmd << "#{opt.avgLhSurface}  "                              # surface to render upon
       cmd << "#{lh_images_dir}"
       do_cmd(cmd, opt.verbose, opt.fake)
 
       # create RH surface components
       cmd = "hclab_make_surface_images   -v "
-      cmd << "--valueRange=#{PIB_SURFACE_VIZ_FLOOR},#{PIB_SURFACE_VIZ_CEILING}  "   # visualization threshold - low cutoff
-      cmd << "--colorMap=#{opt.colorMap}  "     # maximum absolute value in the color coding
-      cmd << "#{ratioVolume_fullPath}  "        # ratio volume
-      cmd << "#{opt.avgRhSurface}  "            # surface to render upon
+      cmd << "--valueRange=#{PIB_SURFACE_VIZ_FLOOR[ratioVolume_ndx]},#{PIB_SURFACE_VIZ_CEILING[ratioVolume_ndx]}  "   # visualization threshold - low cutoff
+      cmd << "--colorMap=#{opt.colorMap}  "                       # maximum absolute value in the color coding
+      cmd << "#{ratio_volumes_fullpath[ratioVolume_ndx]}  "       # ratio volume
+      cmd << "#{opt.avgRhSurface}  "                              # surface to render upon
       cmd << "#{rh_images_dir}"
       do_cmd(cmd, opt.verbose, opt.fake)
 
       # create the summary image
-      vizOut = opt.keyname + "_pibRatios_" + refTissue + "_averageSurfaceViz.png"
+      vizOut = opt.keyname + "_pibRatios_" + PIB_REF_TISSUE_IDENTIFIERS[ratioVolume_ndx] + "_averageSurfaceViz.png"
       vizOut_fullPath = File.join(pibImages_dir_fullPath, vizOut)
       cmd = "hclab_make_summary_image -v    "
       cmd << "#{lh_images_dir}  "
@@ -276,24 +279,24 @@ begin
 
       # create LH surface components
       cmd = "hclab_make_surface_images   -v  "
-      cmd << "--valueRange=#{PIB_SURFACE_VIZ_FLOOR},#{PIB_SURFACE_VIZ_CEILING}  "   # visualization threshold - low cutoff
-      cmd << "--colorMap=#{opt.colorMap}  "     # maximum absolute value in the color coding
-      cmd << "#{ratioVolume_fullPath}  "        # ratio volume
-      cmd << "#{opt.indivLhSurface}  "          # surface to render upon
+      cmd << "--valueRange=#{PIB_SURFACE_VIZ_FLOOR[ratioVolume_ndx]},#{PIB_SURFACE_VIZ_CEILING[ratioVolume_ndx]}  "   # visualization threshold - low cutoff
+      cmd << "--colorMap=#{opt.colorMap}  "                       # maximum absolute value in the color coding
+      cmd << "#{ratio_volumes_fullpath[ratioVolume_ndx]}  "       # ratio volume
+      cmd << "#{opt.indivLhSurface}  "                            # surface to render upon
       cmd << "#{lh_images_dir}"
       do_cmd(cmd, opt.verbose, opt.fake)
 
       # create RH surface components
       cmd = "hclab_make_surface_images   -v  "
-      cmd << "--valueRange=#{PIB_SURFACE_VIZ_FLOOR},#{PIB_SURFACE_VIZ_CEILING}  "   # visualization threshold - low cutoff
-      cmd << "--colorMap=#{opt.colorMap}  "     # maximum absolute value in the color coding
-      cmd << "#{ratioVolume_fullPath}  "        # ratio volume
-      cmd << "#{opt.indivRhSurface}  "          # surface to render upon
+      cmd << "--valueRange=#{PIB_SURFACE_VIZ_FLOOR[ratioVolume_ndx]},#{PIB_SURFACE_VIZ_CEILING[ratioVolume_ndx]}  "   # visualization threshold - low cutoff
+      cmd << "--colorMap=#{opt.colorMap}  "                       # maximum absolute value in the color coding
+      cmd << "#{ratio_volumes_fullpath[ratioVolume_ndx]}  "       # ratio volume
+      cmd << "#{opt.indivRhSurface}  "                            # surface to render upon
       cmd << "#{rh_images_dir}"
       do_cmd(cmd, opt.verbose, opt.fake)
 
       # create the summary image
-      vizOut = opt.keyname + "_pibRatios_" + refTissue + "_individualSurfaceViz.png"
+      vizOut = opt.keyname + "_pibRatios_" + PIB_REF_TISSUE_IDENTIFIERS[ratioVolume_ndx] + "_individualSurfaceViz.png"
       vizOut_fullPath = File.join(pibImages_dir_fullPath, vizOut)
       cmd = "hclab_make_summary_image -v    "
       cmd << "#{lh_images_dir}  "

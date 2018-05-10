@@ -27,12 +27,6 @@ require 'beagle_function_library'
 require 'beagle_logger_classes'
 require 'beagle_civet_function_library'
 
-# define some constants with global scope
-#
-# define the range of AAL label values comprising the cerebellum
-AAL_CEREBELLUM_RANGE = 91,116
-
-
 
 # start of main script
 begin
@@ -131,8 +125,20 @@ begin
    CIVET_TISSUE_TYPE_GM = settings['CIVET_TISSUE_TYPE_GM']
    CIVET_TISSUE_TYPE_WM = settings['CIVET_TISSUE_TYPE_WM']
    CIVET_CLASSIFY_DISCRETE_VOLUME_SUFFIX = settings['CIVET_CLASSIFY_DISCRETE_VOLUME_SUFFIX']
-
-   LORIS_AAL_LABELLED_VOLUME_SUFFIX = '_t1_final_AAL120Labels.mnc'
+   AAL_CEREBELLUM_LABEL_RANGE = settings['AAL_CEREBELLUM_LABEL_RANGE']
+   #
+   MASKS_AAL_CEREBELLUM_FILENAME = settings['MASKS_AAL_CEREBELLUM_FILENAME']
+   MASKS_CEREBELLUM_GM_FILENAME = settings['MASKS_CEREBELLUM_GM_FILENAME']
+   MASKS_CEREBELLUM_WM_FILENAME = settings['MASKS_CEREBELLUM_WM_FILENAME']
+   MASKS_CEREBELLUM_GMWM_FILENAME = settings['MASKS_CEREBELLUM_GMWM_FILENAME']
+   MASKS_WHOLEBRAIN_CSF_FILENAME = settings['MASKS_WHOLEBRAIN_CSF_FILENAME']
+   MASKS_WHOLEBRAIN_GM_FILENAME = settings['MASKS_WHOLEBRAIN_GM_FILENAME']
+   MASKS_WHOLEBRAIN_WM_FILENAME = settings['MASKS_WHOLEBRAIN_WM_FILENAME']
+   MASKS_CORTICAL_WM_FILENAME = settings['MASKS_CORTICAL_WM_FILENAME']
+   #
+   tmp = settings['AAL_CEREBELLUM_LABEL_RANGE'].split(',')
+   AAL_CEREBELLUM_LABEL_RANGE = [tmp[0].to_i, tmp[1].to_i]
+   AAL_LABELLED_SUBJECT_VOLUME_SUFFIX = settings['AAL_LABELLED_SUBJECT_VOLUME_SUFFIX']
 
    keyname_dir_fullPath = File.join(LORIS_ROOT_DIR, opt.keyname)
    masks_dir = 'masks-' + opt.civetScanDate
@@ -172,11 +178,17 @@ begin
    # * * * * *   START of subject/scan-specific validation   * * * * *
    #
    # make sure that we have already created an AAL label volume for this subject
-   filename = opt.keyname + LORIS_AAL_LABELLED_VOLUME_SUFFIX
+   filename = opt.keyname + AAL_LABELLED_SUBJECT_VOLUME_SUFFIX
    labels_dir = 'AAL-' + opt.civetScanDate
    filename_fullPath = File.join(keyname_dir_fullPath, labels_dir, filename)
    if !File.exists?( filename_fullPath ) then
       puts sprintf("\n!!! Error: Beagle-generated AAL label volume not found: %s", filename_fullPath)
+      exit
+   end
+
+   # ensure that the Civet brain mask exists
+   if !civetBrainMask=civet_getFilenameCerebrumMask(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt, fullpath:true, checkExistence:true) then
+      puts sprintf("\n!!! Error: Attempted read of Civet brain mask for subject **%s-%s** failed.", opt.keyname, opt.civetScanDate)
       exit
    end
    #
@@ -209,17 +221,27 @@ begin
    cmd << "-const2 #{const1.to_s} #{const2.to_s} "
    cmd << "-segment "
    cmd << "#{opt.classifyVolname} "
-   cmd << "#{masks_dir_fullPath}/wholeBrain_gray_matter_mask.mnc "
+   cmd << "#{masks_dir_fullPath}/#{MASKS_WHOLEBRAIN_GM_FILENAME} "
    do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
 
    # create a white matter mask from the final classify volume
+   # ... this mask contains all white matter: cortical, cerebellum, and brainstem
    const1 = CIVET_TISSUE_TYPE_WM.to_f - fudge
    const2 = CIVET_TISSUE_TYPE_WM.to_f + fudge
    cmd = "mincmath -clobber -verbose "
    cmd << "-const2 #{const1.to_s} #{const2.to_s} "
    cmd << "-segment "
    cmd << "#{opt.classifyVolname} "
-   cmd << "#{masks_dir_fullPath}/wholeBrain_white_matter_mask.mnc "
+   cmd << "#{masks_dir_fullPath}/#{MASKS_WHOLEBRAIN_WM_FILENAME} "
+   do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
+
+   # create a cortical white matter mask by applying the Civet brainmask to the above WM mask
+   # ... this mask does NOT contain cerebellum or brainstem
+   cmd = "mincmath -clobber -verbose "
+   cmd << "-and "
+   cmd << "#{masks_dir_fullPath}/#{MASKS_WHOLEBRAIN_WM_FILENAME} "
+   cmd << "#{civetBrainMask} "
+   cmd << "#{masks_dir_fullPath}/#{MASKS_CORTICAL_WM_FILENAME} "
    do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
 
    # create a CSF mask from the final classify volume
@@ -229,38 +251,38 @@ begin
    cmd << "-const2 #{const1.to_s} #{const2.to_s} "
    cmd << "-segment "
    cmd << "#{opt.classifyVolname} "
-   cmd << "#{masks_dir_fullPath}/wholeBrain_csf_mask.mnc "
+   cmd << "#{masks_dir_fullPath}/#{MASKS_WHOLEBRAIN_CSF_FILENAME} "
    do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
 
 
    # extract the left and right cerebellum from the AAL volume
    cmd = "mincmath -clobber -verbose "
-   cmd << "-const2 #{AAL_CEREBELLUM_RANGE[0]} #{AAL_CEREBELLUM_RANGE[1]} "
+   cmd << "-const2 #{AAL_CEREBELLUM_LABEL_RANGE[0]} #{AAL_CEREBELLUM_LABEL_RANGE[1]} "
    cmd << "-segment "
    cmd << "#{opt.aalVolname} "
-   cmd << "#{masks_dir_fullPath}/aal_cerebellum_mask_allTissues.mnc "
+   cmd << "#{masks_dir_fullPath}/#{MASKS_AAL_CEREBELLUM_FILENAME} "
    do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
 
 
    # apply the gray and white matter masks to the label volume mask
    # ... resulting in cerebellar gm/wm masks
    cmd = "mincmath -clobber -verbose -mult "
-   cmd << "#{masks_dir_fullPath}/aal_cerebellum_mask_allTissues.mnc "
-   cmd << "#{masks_dir_fullPath}/wholeBrain_gray_matter_mask.mnc "
-   cmd << "#{masks_dir_fullPath}/cerebellum_mask_gm.mnc "
+   cmd << "#{masks_dir_fullPath}/#{MASKS_AAL_CEREBELLUM_FILENAME} "
+   cmd << "#{masks_dir_fullPath}/#{MASKS_WHOLEBRAIN_GM_FILENAME} "
+   cmd << "#{masks_dir_fullPath}/#{MASKS_CEREBELLUM_GM_FILENAME} "
    do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
    #
    cmd = "mincmath -clobber -verbose -mult "
-   cmd << "#{masks_dir_fullPath}/aal_cerebellum_mask_allTissues.mnc "
-   cmd << "#{masks_dir_fullPath}/wholeBrain_white_matter_mask.mnc "
-   cmd << "#{masks_dir_fullPath}/cerebellum_mask_wm.mnc "
+   cmd << "#{masks_dir_fullPath}/#{MASKS_AAL_CEREBELLUM_FILENAME} "
+   cmd << "#{masks_dir_fullPath}/#{MASKS_WHOLEBRAIN_WM_FILENAME} "
+   cmd << "#{masks_dir_fullPath}/#{MASKS_CEREBELLUM_WM_FILENAME} "
    do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
 
    # combine gm and wm masks to get a nice composite
    cmd = "mincmath -clobber -verbose -add "
-   cmd << "#{masks_dir_fullPath}/cerebellum_mask_gm.mnc "
-   cmd << "#{masks_dir_fullPath}/cerebellum_mask_wm.mnc "
-   cmd << "#{masks_dir_fullPath}/cerebellum_mask_gmWm.mnc"
+   cmd << "#{masks_dir_fullPath}/#{MASKS_CEREBELLUM_GM_FILENAME} "
+   cmd << "#{masks_dir_fullPath}/#{MASKS_CEREBELLUM_WM_FILENAME} "
+   cmd << "#{masks_dir_fullPath}/#{MASKS_CEREBELLUM_GMWM_FILENAME}"
    do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
 
 

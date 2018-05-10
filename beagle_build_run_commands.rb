@@ -337,10 +337,9 @@ def buildCmd_beagle_pib_volumetric_visualization(scan_item, opt, settings, verbo
    cmd << "--settingsFile #{opt.settingsFile} "
    
    # gray matter mask volume
-   derived_gm_mask_volume = 'wholeBrain_gray_matter_mask.mnc'
    masks_dir = 'masks-' + scan_item['civetScanDate']
    masks_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], scan_item['keyname'], masks_dir)
-   gmMaskVol_fullPath = File.join(masks_dir_fullPath, derived_gm_mask_volume)
+   gmMaskVol_fullPath = File.join(masks_dir_fullPath, settings['MASKS_WHOLEBRAIN_GM_FILENAME'])
    cmd << "--gmMaskVol #{gmMaskVol_fullPath} "                 
    
    # t1 anatomical underlay volume
@@ -480,10 +479,9 @@ def buildCmd_beagle_fdg_volumetric_visualization(scan_item, opt, settings, verbo
    cmd << "--settingsFile #{opt.settingsFile} "
    
    # gray matter mask volume
-   derived_gm_mask_volume = 'wholeBrain_gray_matter_mask.mnc'
    masks_dir = 'masks-' + scan_item['civetScanDate']
    masks_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], scan_item['keyname'], masks_dir)
-   gmMaskVol_fullPath = File.join(masks_dir_fullPath, derived_gm_mask_volume)
+   gmMaskVol_fullPath = File.join(masks_dir_fullPath, settings['MASKS_WHOLEBRAIN_GM_FILENAME'])
    cmd << "--gmMaskVol #{gmMaskVol_fullPath} "                 
    
    # t1 anatomical underlay volume
