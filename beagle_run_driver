@@ -59,11 +59,11 @@ begin
 
       opts.on('-d', '--debug', 'Print pedantic debugging messages') { |d| opt.debug = d }
    
-      opts.on('-f', '--fake', 'Fake mode -- do not actually execute') { |f| opt.fake = f }
+      opts.on('-f', '--fake', 'Fake mode -- do not actually execute', ' ') { |f| opt.fake = f }
       
       opts.on('--SGE', 'Submit processing to batch queueing system') { |sge| opt.SGE = sge }
 
-      opts.on('--sgeDelay sge_delay_time', "Number of minutes for a new SGE job to sleep prior to starting processing ") do |sgeDelay|
+      opts.on('--sgeDelay sge_delay_time', "Number of minutes for a new SGE job to sleep prior to starting processing "," ") do |sgeDelay|
          opt.sgeDelay = sgeDelay.to_i
          puts "** SGE delay time (minutes): " + opt.sgeDelay.to_s if opt.verbose
       end
@@ -78,17 +78,17 @@ begin
          puts "** Pipeline stop stage: " + opt.stageStop if opt.verbose
       end
 
-      opts.on('--stages list_of_stages', "Comma-separated list of stages to be run, or 'all' ") do |stagesTbr|
+      opts.on('--stages list_of_stages', "Comma-separated list of stages to be run, or 'all'","Stages: run_init, anatomical, pib, fdg, reporting", " ") do |stagesTbr|
          opt.stagesTbr = stagesTbr
          puts "** Pipeline stages to be run: " + opt.stagesTbr if opt.verbose
       end
 
-      opts.on('--settingsFile beagle_settings_file', "Fullpath to the beagle settings file ") do |settingsFile|
+      opts.on('--settingsFile beagle_settings_file', "Fullpath to the beagle settings file ", " ") do |settingsFile|
          opt.settingsFile = settingsFile.to_s
          puts "** Fullpath to the Beagle settings file: " + opt.settingsFile if opt.verbose
       end
 
-      opts.on('--runConfigFile run_configuration_file', "Fullpath to the run configuration file ") do |runConfigFile|
+      opts.on('--runConfigFile run_configuration_file', "Fullpath to the run configuration file ", " ") do |runConfigFile|
          opt.runConfigFile = runConfigFile.to_s
          puts "** Fullpath to the run configuration file: " + opt.runConfigFile if opt.verbose
       end

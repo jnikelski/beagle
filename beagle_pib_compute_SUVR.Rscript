@@ -159,7 +159,6 @@ pibDir_imagesDir <- file.path(pibDir, "images")
 pibDir_masksDir <- file.path(pibDir, "masks")
 pibDir_talDir <- file.path(pibDir, "tal")
 
-RATIO_VOLUME_SUFFIX <- "_pibRatios_refCerebGM_noMask.mnc"
 # ... create a unique Id to write to csv file
 uniqueId <- paste(opt$keyname, pibWorkingDir, sep="-")
 
@@ -176,6 +175,13 @@ AAL_LABELS_DESCRIPTION_FILE <- file.path(AAL_LABELS_DIR, AAL_LABELS_NAMES)
 # civet-related paths
 CIVET_VERSION <- settings$CIVET_VERSION
 
+# set reference tissue-related values. First, parse the multi-entry input lines into character arrays
+PIB_REF_TISSUE_IDENTIFIERS <- unlist(strsplit(settings$PIB_REF_TISSUE_IDENTIFIERS,','))
+PIB_REF_TISSUE_DESCRIPTIONS <- unlist(strsplit(settings$PIB_REF_TISSUE_DESCRIPTIONS,','))
+#
+# create vector of output ratio volume names
+ratio_volume_names <- c(paste(opt$keyname, "_pibRatios_", PIB_REF_TISSUE_IDENTIFIERS[1], "_noMask.mnc", sep=""), 
+                        paste(opt$keyname, "_pibRatios_", PIB_REF_TISSUE_IDENTIFIERS[2], "_noMask.mnc", sep=""))
 
 
 # set working directory as the PiB subject root dir
@@ -217,123 +223,130 @@ lblFilename <- paste(opt$keyname, LABEL_VOLUME_SUFFIX, sep="")
 lblFilenameFullPath <- file.path(labelsDir, lblFilename)
 
 
-# set PiB ratio volume full path
-ratioFilename <- paste(opt$keyname, RATIO_VOLUME_SUFFIX, sep="")
-ratioFilenameFullPath <- file.path(pibDir_ratiosDir, ratioFilename)
+# loop over all reference tissues
+for ( ndx in 1:length(PIB_REF_TISSUE_IDENTIFIERS)) {
+   if ( opt$verbose ) {
+      cat("\n\n======================================================================\n")
+      cat(sprintf("==> Processing reference tisse: %s (%s)\n", PIB_REF_TISSUE_DESCRIPTIONS[ndx], PIB_REF_TISSUE_IDENTIFIERS[ndx]))
+      cat("----------------------------------------------------------------------\n\n")
+   }
+
+    # set PiB ratio volume full path
+    ratioFilenameFullPath <- file.path(pibDir_ratiosDir, ratio_volume_names[ndx])
 
 
-# read in the AAL label details
-lblFile <- AAL_LABELS_DESCRIPTION_FILE
-lbl_details.df <- load_AAL_label_info(lblFile)
-# ... only retain cerebral labels (no cerebellum, no outside-the-brain)
-lbl_details.df <- subset(lbl_details.df, lbl_details.df$isCerebrum != 0 )
-
-
-
-# compute mean ratios over all ROIs
-ratios_byRoi.df <- compute_suvr_by_roi(ratioFilenameFullPath, lblFilenameFullPath, lbl_details.df)
-print(ratios_byRoi.df)
-
-
-# compute various aggregate SUVR values
-#
-# create a receiving data.frame
-# ... same format as the other, as we'll be "rbind"ing later
-nValues <- 3
-suvr_aggr.df <- data.frame(Description=rep("",nValues),
-                        Abbrev=rep("",nValues),
-                        LabelNo=rep(0,nValues),
-                        LabelName=rep("SUVR",nValues),
-                        isCerebrum=rep(0,nValues),
-                        isCortical =rep(0,nValues),
-                        isNeoCortical =rep(0,nValues),
-                        isSecondaryLbl =rep(0,nValues),
-                        nVoxels=rep(0,nValues),
-                        suvr=rep(0,nValues), stringsAsFactors=FALSE)
+    # read in the AAL label details
+    lblFile <- AAL_LABELS_DESCRIPTION_FILE
+    lbl_details.df <- load_AAL_label_info(lblFile)
+    # ... only retain cerebral labels (no cerebellum, no outside-the-brain)
+    lbl_details.df <- subset(lbl_details.df, lbl_details.df$isCerebrum != 0 )
 
 
 
-# (1) SUVR over all cortical and sub-cortical gray matter
-#     ... no cerebellum, but everything else (including thalamus)
-ratios_byRoiX.df <- subset(ratios_byRoi.df, ratios_byRoi.df$isCerebrum != 0 & !is.na(ratios_byRoi.df$nVoxels)) 
-print(ratios_byRoiX.df)
-suvr.lst <- compute_selected_SUVR(ratios_byRoiX.df)
-#
-# save these results out 
-suvr_aggr.df$Description[1] <- "SUVR over all cerebral gray matter"
-suvr_aggr.df$Abbrev[1] <- "NA"
-suvr_aggr.df$LabelNo[1] <- NA
-suvr_aggr.df$LabelName[1] <- "SUVR"
-suvr_aggr.df$nVoxels[1] <- suvr.lst$totalVoxels
-suvr_aggr.df$suvr[1] <- suvr.lst$suvr
-suvr_aggr.df$isCerebrum[1] <- 1
-suvr_aggr.df$isCortical[1] <- 0
-suvr_aggr.df$isNeoCortical[1] <- 0
-suvr_aggr.df$isSecondaryLbl[1] <- 0
-print(suvr_aggr.df)
-#
-# write selected values to the logfile
-llogger <- beagle_logger_logMessage(progname, opt$keyname, 'PiB', opt$scanDate, 
-                                       'suvr_over_cerebral_gm', suvr.lst$suvr, llogger)
+    # compute mean ratios over all ROIs
+    ratios_byRoi.df <- compute_suvr_by_roi(ratioFilenameFullPath, lblFilenameFullPath, lbl_details.df)
+    print(ratios_byRoi.df)
+
+
+    # compute various aggregate SUVR values
+    #
+    # create a receiving data.frame
+    # ... same format as the other, as we'll be "rbind"ing later
+    nValues <- 3
+    suvr_aggr.df <- data.frame(Description=rep("",nValues),
+                            Abbrev=rep("",nValues),
+                            LabelNo=rep(0,nValues),
+                            LabelName=rep("SUVR",nValues),
+                            isCerebrum=rep(0,nValues),
+                            isCortical =rep(0,nValues),
+                            isNeoCortical =rep(0,nValues),
+                            isSecondaryLbl =rep(0,nValues),
+                            nVoxels=rep(0,nValues),
+                            suvr=rep(0,nValues), stringsAsFactors=FALSE)
 
 
 
-# (2) SUVR over all cortical gray matter
-ratios_byRoiX.df <- subset(ratios_byRoi.df, ratios_byRoi.df$isCortical != 0  & !is.na(ratios_byRoi.df$nVoxels)) 
-print(ratios_byRoiX.df)
-suvr.lst <- compute_selected_SUVR(ratios_byRoiX.df)
-#
-# save these results out 
-suvr_aggr.df$Description[2] <- "SUVR over all cortical gray matter"
-suvr_aggr.df$Abbrev[2] <- "NA"
-suvr_aggr.df$LabelNo[2] <- NA
-suvr_aggr.df$LabelName[2] <- "SUVR"
-suvr_aggr.df$nVoxels[2] <- suvr.lst$totalVoxels
-suvr_aggr.df$suvr[2] <- suvr.lst$suvr
-suvr_aggr.df$isCerebrum[2] <- 0
-suvr_aggr.df$isCortical[2] <- 1
-suvr_aggr.df$isNeoCortical[2] <- 0
-suvr_aggr.df$isSecondaryLbl[2] <- 0
-print(suvr_aggr.df)
-#
-# write selected values to the logfile
-llogger <- beagle_logger_logMessage(progname, opt$keyname, 'PiB', opt$scanDate, 
-                                       'suvr_over_cortical_gm', suvr.lst$suvr, llogger)
+    # (1) SUVR over all cortical and sub-cortical gray matter
+    #     ... no cerebellum, but everything else (including thalamus)
+    ratios_byRoiX.df <- subset(ratios_byRoi.df, ratios_byRoi.df$isCerebrum != 0 & !is.na(ratios_byRoi.df$nVoxels)) 
+    print(ratios_byRoiX.df)
+    suvr.lst <- compute_selected_SUVR(ratios_byRoiX.df)
+    #
+    # save these results out 
+    suvr_aggr.df$Description[1] <- "SUVR over all cerebral gray matter"
+    suvr_aggr.df$Abbrev[1] <- "NA"
+    suvr_aggr.df$LabelNo[1] <- NA
+    suvr_aggr.df$LabelName[1] <- "SUVR"
+    suvr_aggr.df$nVoxels[1] <- suvr.lst$totalVoxels
+    suvr_aggr.df$suvr[1] <- suvr.lst$suvr
+    suvr_aggr.df$isCerebrum[1] <- 1
+    suvr_aggr.df$isCortical[1] <- 0
+    suvr_aggr.df$isNeoCortical[1] <- 0
+    suvr_aggr.df$isSecondaryLbl[1] <- 0
+    print(suvr_aggr.df)
+    #
+    # write selected values to the logfile
+    llogger <- beagle_logger_logMessage(progname, opt$keyname, 'PiB', opt$scanDate, 
+                                        paste(PIB_REF_TISSUE_IDENTIFIERS[ndx],'suvr_over_cerebral_gm', sep='_'), suvr.lst$suvr, llogger)
 
 
 
-# (3) SUVR over all neo-cortical gray matter
-ratios_byRoiX.df <- subset(ratios_byRoi.df, ratios_byRoi.df$isNeoCortical != 0  & !is.na(ratios_byRoi.df$nVoxels)) 
-print(ratios_byRoiX.df)
-suvr.lst <- compute_selected_SUVR(ratios_byRoiX.df)
-#
-# save these results out 
-suvr_aggr.df$Description[3] <- "SUVR over all neo-cortical gray matter"
-suvr_aggr.df$Abbrev[3] <- "NA"
-suvr_aggr.df$LabelNo[3] <- NA
-suvr_aggr.df$LabelName[3] <- "SUVR"
-suvr_aggr.df$nVoxels[3] <- suvr.lst$totalVoxels
-suvr_aggr.df$suvr[3] <- suvr.lst$suvr
-suvr_aggr.df$isCerebrum[3] <- 0
-suvr_aggr.df$isCortical[3] <- 0
-suvr_aggr.df$isNeoCortical[3] <- 1
-suvr_aggr.df$isSecondaryLbl[3] <- 0
-print(suvr_aggr.df)
-#
-# write selected values to the logfile
-llogger <- beagle_logger_logMessage(progname, opt$keyname, 'PiB', opt$scanDate, 
-                                       'suvr_over_neo-cortical_gm', suvr.lst$suvr, llogger)
+    # (2) SUVR over all cortical gray matter
+    ratios_byRoiX.df <- subset(ratios_byRoi.df, ratios_byRoi.df$isCortical != 0  & !is.na(ratios_byRoi.df$nVoxels)) 
+    print(ratios_byRoiX.df)
+    suvr.lst <- compute_selected_SUVR(ratios_byRoiX.df)
+    #
+    # save these results out 
+    suvr_aggr.df$Description[2] <- "SUVR over all cortical gray matter"
+    suvr_aggr.df$Abbrev[2] <- "NA"
+    suvr_aggr.df$LabelNo[2] <- NA
+    suvr_aggr.df$LabelName[2] <- "SUVR"
+    suvr_aggr.df$nVoxels[2] <- suvr.lst$totalVoxels
+    suvr_aggr.df$suvr[2] <- suvr.lst$suvr
+    suvr_aggr.df$isCerebrum[2] <- 0
+    suvr_aggr.df$isCortical[2] <- 1
+    suvr_aggr.df$isNeoCortical[2] <- 0
+    suvr_aggr.df$isSecondaryLbl[2] <- 0
+    print(suvr_aggr.df)
+    #
+    # write selected values to the logfile
+    llogger <- beagle_logger_logMessage(progname, opt$keyname, 'PiB', opt$scanDate, 
+                                        paste(PIB_REF_TISSUE_IDENTIFIERS[ndx],'suvr_over_cortical_gm', sep='_'), suvr.lst$suvr, llogger)
 
 
 
-# write out the results to a csv file (append keyname and dirname first)
-ratios_byRoi.df <- rbind(ratios_byRoi.df, suvr_aggr.df)
-ratios_byRoi.df <- cbind(uniqueId, keyname=opt$keyname, dirname=pibWorkingDir, ratios_byRoi.df)
-#
-csvFilename <- paste(opt$keyname, "_pibRatios_refCerebGM_SUVRs_", AAL_LABELS_VERSION, ".csv", sep="")
-ratioFilenameFullPath <- file.path(pibDir_ratiosDir, csvFilename)
-write.csv(ratios_byRoi.df, ratioFilenameFullPath, row.names=FALSE)
+    # (3) SUVR over all neo-cortical gray matter
+    ratios_byRoiX.df <- subset(ratios_byRoi.df, ratios_byRoi.df$isNeoCortical != 0  & !is.na(ratios_byRoi.df$nVoxels)) 
+    print(ratios_byRoiX.df)
+    suvr.lst <- compute_selected_SUVR(ratios_byRoiX.df)
+    #
+    # save these results out 
+    suvr_aggr.df$Description[3] <- "SUVR over all neo-cortical gray matter"
+    suvr_aggr.df$Abbrev[3] <- "NA"
+    suvr_aggr.df$LabelNo[3] <- NA
+    suvr_aggr.df$LabelName[3] <- "SUVR"
+    suvr_aggr.df$nVoxels[3] <- suvr.lst$totalVoxels
+    suvr_aggr.df$suvr[3] <- suvr.lst$suvr
+    suvr_aggr.df$isCerebrum[3] <- 0
+    suvr_aggr.df$isCortical[3] <- 0
+    suvr_aggr.df$isNeoCortical[3] <- 1
+    suvr_aggr.df$isSecondaryLbl[3] <- 0
+    print(suvr_aggr.df)
+    #
+    # write selected values to the logfile
+    llogger <- beagle_logger_logMessage(progname, opt$keyname, 'PiB', opt$scanDate, 
+                                        paste(PIB_REF_TISSUE_IDENTIFIERS[ndx],'suvr_over_neo-cortical_gm', sep='_'), suvr.lst$suvr, llogger)
 
+
+
+    # write out the results to a csv file (append keyname and dirname first)
+    ratios_byRoi.df <- rbind(ratios_byRoi.df, suvr_aggr.df)
+    ratios_byRoi.df <- cbind(uniqueId, keyname=opt$keyname, dirname=pibWorkingDir, ratios_byRoi.df)
+    #
+    csvFilename <- paste(opt$keyname, "_pibRatios_",PIB_REF_TISSUE_IDENTIFIERS[ndx],"_SUVRs_", AAL_LABELS_VERSION, ".csv", sep="")
+    ratioFilenameFullPath <- file.path(pibDir_ratiosDir, csvFilename)
+    write.csv(ratios_byRoi.df, ratioFilenameFullPath, row.names=FALSE)
+} # reference tissue loop
 
 # close log file
 if ( log_file != "loggingBySGE" ) {

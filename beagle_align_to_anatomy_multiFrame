@@ -185,6 +185,12 @@ begin
       puts "\n\n"
    end
 
+
+   # init variables/constants
+   PIB_MEAN3d_VOLUME_SUFFIX = '_mean_talAligned.mnc'
+   
+
+
    # extract high-signal frames from the MC dynamic volume using mincreshape
    #
    # NB: If we have a volume containing less than 20 frames,
@@ -272,7 +278,7 @@ begin
       cmd << "-transform  #{opt.outDir}/#{dyn_vol_basename}_pib2tal.xfm "
       cmd << "-like #{icbm_mri_fullname}  "
       cmd << "#{opt.tmpDir}/pibXmean.mnc  "
-      cmd << "#{opt.outDir}/#{dyn_vol_basename}_mean_talAligned.mnc "
+      cmd << "#{opt.outDir}/#{dyn_vol_basename}#{PIB_MEAN3d_VOLUME_SUFFIX} "
       do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
 
       puts "\n** resamplng input dynamic volume ..."   if opt.verbose

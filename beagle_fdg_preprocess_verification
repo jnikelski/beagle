@@ -108,7 +108,7 @@ begin
    LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
    CIVET_VERSION = settings['CIVET_VERSION']
    FDG_CEREB_THOLD_PCT = settings['FDG_CEREB_THOLD_PCT'].to_f
-
+   MASKS_CEREBELLUM_GM_FILENAME = settings['MASKS_CEREBELLUM_GM_FILENAME']
 
 
    # set some useful values
@@ -125,7 +125,7 @@ begin
    #
    masks_dir = 'masks-' + opt.civetScanDate
    masks_dir_fullPath = File.join(keyname_dir_fullPath, masks_dir)
-   CEREB_GM_MASK_VOLUME_FULLPATH = File.join(masks_dir_fullPath, 'cerebellum_mask_gm.mnc')
+   CEREB_GM_MASK_VOLUME_FULLPATH = File.join(masks_dir_fullPath, MASKS_CEREBELLUM_GM_FILENAME)
 
 
 

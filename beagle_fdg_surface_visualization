@@ -147,7 +147,7 @@ begin
    puts "Surface visualization min/max: #{FDG_SURFACE_VIZ_FLOOR}/#{FDG_SURFACE_VIZ_CEILING}" if opt.debug
 
    # define some useful constants
-   CSF_MASK_VOLNAME = 'wholeBrain_csf_mask.mnc'
+   MASKS_WHOLEBRAIN_CSF_FILENAME = settings['MASKS_WHOLEBRAIN_CSF_FILENAME']
    RATIOS_VOLUME_PATTERN = '*_fdgRatios_noMask.mnc'
 
    # set some useful values/paths
@@ -276,7 +276,7 @@ begin
    # also, apply the individuals CSF mask as well
    # ... invert
    cmd = "mincmath   -verbose -clobber -const2 0 0 -segment "
-   cmd << "#{masks_dir_fullPath}/#{CSF_MASK_VOLNAME} "
+   cmd << "#{masks_dir_fullPath}/#{MASKS_WHOLEBRAIN_CSF_FILENAME} "
    cmd << "#{fdgTmp_dir_fullPath}/subject_csf_mask.mnc "
    do_cmd(cmd, opt.verbose, opt.fake)
    # ... apply

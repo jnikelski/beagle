@@ -115,13 +115,9 @@ begin
    CIVET_VERSION = settings['CIVET_VERSION']
    
    # set volumetric visualization thresholds
-   PIB_CEREB_THOLD_PCT = settings['PIB_CEREB_THOLD_PCT'].to_f
-   PIB_VOLUMETRIC_VIZ_FLOOR = settings['PIB_VOLUMETRIC_VIZ_FLOOR']
-   PIB_VOLUMETRIC_VIZ_CEILING = settings['PIB_VOLUMETRIC_VIZ_CEILING']
+   PIB_VOLUMETRIC_VIZ_FLOOR = settings['PIB_VOLUMETRIC_VIZ_FLOOR'].split(',')
+   PIB_VOLUMETRIC_VIZ_CEILING = settings['PIB_VOLUMETRIC_VIZ_CEILING'].split(',')
    puts "Volumetric visualization min/max: #{PIB_VOLUMETRIC_VIZ_FLOOR}/#{PIB_VOLUMETRIC_VIZ_CEILING}" if opt.debug
-
-   # define some useful constants
-   RATIOS_VOLUME_PATTERN = '*_pibRatios_*.mnc'
 
    # set some useful values/paths
    keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
@@ -132,6 +128,15 @@ begin
    pibImages_dir_fullPath = File.join(pib_dir_fullPath, 'images')
 
 
+   # set reference tissue-related values. First, parse the multi-entry input lines into character arrays
+   PIB_REF_TISSUE_IDENTIFIERS = settings['PIB_REF_TISSUE_IDENTIFIERS'].split(',')
+   PIB_REF_TISSUE_DESCRIPTIONS = settings['PIB_REF_TISSUE_DESCRIPTIONS'].split(',')
+   #
+   # create vector of input ratio volume names
+   ratio_volumes_fullpath = []
+   ratio_volumes_fullpath.push(File.join(pibRatios_dir_fullPath, opt.keyname + "_pibRatios_" + PIB_REF_TISSUE_IDENTIFIERS[0] + "_noMask.mnc"))
+   ratio_volumes_fullpath.push(File.join(pibRatios_dir_fullPath, opt.keyname + "_pibRatios_" + PIB_REF_TISSUE_IDENTIFIERS[1] + "_noMask.mnc"))
+   puts ratio_volumes_fullpath if opt.debug
 
 
    # * * * * *  START of input argument validation   * * * * *
@@ -164,13 +169,15 @@ begin
       exit
    end
       
-   # find all ratio volumes -- must be at least one
-    ratio_volumes = match_glob_in_dir(pibRatios_dir_fullPath, pattern=RATIOS_VOLUME_PATTERN, return_matches=true, verbose=true)
-   if ( ratio_volumes.length < 1 ) then
-      puts sprintf("!!! Error: No PiB ratio volumes found for for %s-%s", opt.keyname, opt.scanDate)
-      puts opts
-      exit
-   end
+   # ratio volume exists for each reference tissue type?
+   ratio_volumes_fullpath.each{ |ratioVolume_fullPath|
+      if ( !File.exist?(ratioVolume_fullPath) || !File.file?(ratioVolume_fullPath) ) then
+         puts sprintf("!!! Error: PiB ratio volume not found for for %s-%s", opt.keyname, opt.scanDate)
+         puts sprintf("!!!        Expected filename: %s", ratioVolume_fullPath)
+         puts opts
+         exit
+      end
+   }
    #
    # * * * * *  END of input argument validation   * * * * * * * *
    # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
@@ -187,40 +194,28 @@ begin
    set_job_status(pibLogs_dir_fullPath, "beagle_pib_volumetric_visualization_JobStatus", "running")
 
 
-
-   #
    # build mincthumbs commandline and execute 
    # ... applying gray matter mask as part of the process
    # ... LOOPING over all ratio volumes
    #
-  
-   ratio_volumes.each{ |ratioVolume_fullPath|
+   ratio_volumes_fullpath.each_index{ |ratioVolume_ndx|
 
-      # in order to name the output files correctly, we need to 
-      # extract the reference tissue names from the ratio filenames
-      # e.g. filename: p028_pibRatios_refGlobalWM_noMask.mnc
-      #      ... so, we want the 3rd component
-      
-      ratio_filename = File.basename(ratioVolume_fullPath)
-      refTissue = ratio_filename.split('_')[2]
-
-      vizOut = opt.keyname + "_pibRatios_" + refTissue + "_volumetricViz.pdf"
+      vizOut = opt.keyname + "_pibRatios_" + PIB_REF_TISSUE_IDENTIFIERS[ratioVolume_ndx] + "_volumetricViz.pdf"
       vizOut_fullPath = File.join(pibImages_dir_fullPath, vizOut)
 
       cmd = "mincthumbs   -v  "
-      cmd << "-tthresh #{PIB_VOLUMETRIC_VIZ_FLOOR} "     # visualization threshold - low cutoff
-      cmd << "-tfloor #{PIB_VOLUMETRIC_VIZ_FLOOR} "      # make the same as -tthresh to get "register-like" color mapping (see mincthumbs -help)
-      cmd << "-tceiling #{PIB_VOLUMETRIC_VIZ_CEILING}  " # maximum absolute value in the color coding
-      cmd << "-tblendradius 0.001  "            # do not do any blending around the edges
-      cmd << "-opacity 0.5  "                   # make the dynamic image a little transparent (like register)
-      #cmd << "-contrast 1  "                    # anatomical contrast (also affects brightness)
-      cmd << "-pos  "                           # only show positive values
-      #cmd << "-maskimage #{opt.gmMaskVol}  "    # apply the gm mask to the ratio volume
-      cmd << "-out #{vizOut_fullPath}  "        # output filename
-      cmd << "#{ratioVolume_fullPath}  "        # ratio volume
-      cmd << "#{opt.t1UnderlayVol}  "           # anatomical underlay
+      cmd << "-tthresh #{PIB_VOLUMETRIC_VIZ_FLOOR[ratioVolume_ndx]} "      # visualization threshold - low cutoff
+      cmd << "-tfloor #{PIB_VOLUMETRIC_VIZ_FLOOR[ratioVolume_ndx]} "       # make the same as -tthresh to get "register-like" color mapping (see mincthumbs -help)
+      cmd << "-tceiling #{PIB_VOLUMETRIC_VIZ_CEILING[ratioVolume_ndx]}  "  # maximum absolute value in the color coding
+      cmd << "-tblendradius 0.001  "                                       # do not do any blending around the edges
+      cmd << "-opacity 0.5  "                                              # make the dynamic image a little transparent (like register)
+      #cmd << "-contrast 1  "                                              # anatomical contrast (also affects brightness)
+      cmd << "-pos  "                                                      # only show positive values
+      #cmd << "-maskimage #{opt.gmMaskVol}  "                              # apply the gm mask to the ratio volume
+      cmd << "-out #{vizOut_fullPath}  "                                   # output filename
+      cmd << "#{ratio_volumes_fullpath[ratioVolume_ndx]}  "                # input ratio volume
+      cmd << "#{opt.t1UnderlayVol}  "                                      # anatomical underlay
       do_cmd(cmd, opt.verbose, opt.fake)
-
    }
 
    # set job status to "finished"
