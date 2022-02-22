@@ -185,6 +185,25 @@ begin
       exit
    end
 
+
+
+   # init selected constants
+   LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
+   CIVET_VERSION = settings['CIVET_VERSION']
+   
+   MASKS_NATIVE_SKULL_FILENAME = 'skull_mask_native.mnc'
+
+
+   # set some useful values / paths
+   keyname_dir_fullPath = File.join(settings['LORIS_ROOT_DIR'], opt.keyname)
+   
+   masks_dir = 'masks-' + opt.civetScanDate
+   masks_dir_fullPath = File.join(keyname_dir_fullPath, masks_dir)
+
+
+
+   # check for the existence of assorted files/directories that need to be there
+   #
    # is the civet scan-id option reasonable?
    # ... first, append the scan-id to the civet root dir name, then check
    civetScanIdFullpath = civet_getScanDirectoryName(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt, fullpath:true, checkExistence:true)
@@ -194,6 +213,34 @@ begin
       puts opts
       exit
    end
+
+   # ensure that the Civet native-to-icbm linear transform file exists
+   if !icbm_xfm_filename = civet_getFilenameLinearTransform(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt, fullpath:true, checkExistence:true) then
+      puts sprintf("\n!!! Error: Attempted read of Civet linear transform file for subject **%s-%s** failed.", opt.keyname, opt.civetScanDate)
+      exit
+   end
+
+   # ensure that the Civet final stx volume file exists
+   if !icbm_mri_fullname = civet_getFilenameStxT1(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt, fullpath:true, checkExistence:true) then
+      puts sprintf("\n!!! Error: Attempted read of Civet final stx volume for subject **%s-%s** failed.", opt.keyname, opt.civetScanDate)
+      exit
+   end
+
+   # ensure that the Civet native-space volume exists
+   if !native_mri_fullname = civet_getFilenameNativeNUC(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt, fullpath:true, checkExistence:true) then
+      puts sprintf("\n!!! Error: Attempted read of Civet native-space volume for subject **%s-%s** failed.", opt.keyname, opt.civetScanDate)
+      exit
+   end
+   
+   # ensure that the native mri mask exists
+   native_mriMask_fullname = File.join(masks_dir_fullPath, MASKS_NATIVE_SKULL_FILENAME)
+   if (!File.exists?(native_mriMask_fullname)) then
+      puts "\n!!! Attempt tp read the native MRI mask volume failed."
+      puts "--- Volume fullpath: #{native_mriMask_fullname}"
+      exit
+   end
+
+
 
    # print out some summary info about the dynamic volume (if verbose)
    if (opt.verbose) then
@@ -218,14 +265,12 @@ begin
 
 
    # align dynamic volume to native MRI (**must** use NUC-corrected volume)
-   native_mri_fullname = civet_getFilenameNativeNUC(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt)
-   native_mriMask_fullname = civet_getFilenameSkullMaskNative(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt)
-   
+   #
    # if we need a global rescale prior to fitting, do it now
    if ( opt.rescale != 1.0 ) then
       puts "\n** globally rescale dynamic volume by a factor of #{opt.rescale.to_s} ..."  if opt.verbose
       # ... create the rescale xfm, then apply it
-      cmd = "param2xfm -scales #{opt.rescale} #{opt.rescale} #{opt.rescale} "
+      cmd = "param2xfm -clobber -scales #{opt.rescale} #{opt.rescale} #{opt.rescale} "
       cmd << "#{opt.tmpDir}/rescale.xfm  " 
       do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
       #
@@ -268,8 +313,6 @@ begin
 
       # first we will need to concat our transform with that from civet
       # ... remember that order matters
-      icbm_xfm_filename = civet_getFilenameLinearTransform(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt, fullpath:true, checkExistence:true)
-      icbm_mri_fullname = civet_getFilenameStxT1(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt, fullpath:true, checkExistence:true)
 
       puts "\n** concatenating xfms ..."   if opt.verbose
       cmd = "xfmconcat    "

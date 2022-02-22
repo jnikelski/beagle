@@ -1,3 +1,9 @@
+beagle_3.3
+* extensive changes to allow Beagle to use the products of Civet >= 1.1.12
+* /classify volumes no longer skull-stripped
+* /vbm volumes no longer skull-stripped -- decided to do the vbm blurring myself
+* native skull mask no longer produced -- creating this myself
+
 beagle_3.2
 * added infrastructure to permit multiple reference tissues during PiB processing
 * added *cortical white matter* as the second reference tissue

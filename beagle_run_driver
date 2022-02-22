@@ -47,6 +47,7 @@ begin
    opt.stagesTbr           = "all"              # stages to be run
    opt.settingsFile        = ""
    opt.runConfigFile       = ""
+   opt.abortOnCivetVersionCheckFail =  true     # should we abort if we are running with an unauthorized/tested version of Civet? 
 
 
    # List of arguments.
@@ -61,6 +62,8 @@ begin
    
       opts.on('-f', '--fake', 'Fake mode -- do not actually execute', ' ') { |f| opt.fake = f }
       
+      opts.on('--overrideCivetVersionCheck', 'Override abort on Civet version check fail', ' ') { opt.abortOnCivetVersionCheckFail =  false }
+
       opts.on('--SGE', 'Submit processing to batch queueing system') { |sge| opt.SGE = sge }
 
       opts.on('--sgeDelay sge_delay_time', "Number of minutes for a new SGE job to sleep prior to starting processing "," ") do |sgeDelay|
@@ -147,6 +150,8 @@ begin
    LORIS_AGGREGATED_SETTINGS_FILE_PREFIX = settings['LORIS_AGGREGATED_SETTINGS_FILE_PREFIX']
    LORIS_AGGREGATED_SETTINGS_FILE_EXTENSION = settings['LORIS_AGGREGATED_SETTINGS_FILE_EXTENSION']
    
+   CIVET_VERSION = settings['CIVET_VERSION']
+
    LORIS_RUN_IDENTIFIER = settings['LORIS_RUN_IDENTIFIER']
    SGE_EXECUTION_HOST = settings['SGE_EXECUTION_HOST']
    
@@ -226,6 +231,11 @@ begin
       FileUtils.mkdir_p( LORIS_ROOT_DIR )
       puts sprintf("Done.\n")
    end
+
+
+   # ensure that we are capable of using this version of Civet
+   civet_checkVersion(civet_version:CIVET_VERSION, opt:opt, fatal:opt.abortOnCivetVersionCheckFail)
+
 
    # check if the Civet directory tree exists and is valid
    # ... let's say that this *must* exist
