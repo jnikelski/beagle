@@ -42,6 +42,7 @@
 #rx = civet_getFilenameGrayMatterPve(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
 #rx = civet_getFilenameWhiteMatterPve(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
 #rx = civet_getFilenameCsfPve(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
+#rx = civet_getFilenameClassify(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
 #
 # /final
 #rx = civet_getDirnameFinal(civet_keyname:, civet_scanid:, settings:, opt:, checkExistence:true)
@@ -76,10 +77,13 @@
 #rx = civet_getFilenameLinearTransform(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
 #rxLh, rxRh = civet_getFilenameNonlinearTransform(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true, inverted:false)
 #
+# /VBM
+#rx = civet_getDirnameVBM(civet_keyname:, civet_scanid:, settings:, opt:, checkExistence:true)
+#rx = civet_getFilenamesVbmBlurred(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
+#
 # assorted Civet directories
 #rx = civet_getDirnameLogs(civet_keyname:, civet_scanid:, settings:, opt:, checkExistence:true)
 #rx = civet_getDirnameNative(civet_keyname:, civet_scanid:, settings:, opt:, checkExistence:true)
-#rx = civet_getDirnameVBM(civet_keyname:, civet_scanid:, settings:, opt:, checkExistence:true)
 #rx = civet_getDirnameVerify(civet_keyname:, civet_scanid:, settings:, opt:, checkExistence:true)
 #
 # Typical uses:
@@ -97,16 +101,22 @@
 # ==============================================================================
 #
 
-def civet_checkVersion(civet_version:, opt:)
-    #
-    print ("Entering method *civet_checkVersion* ...\n") if opt.debug
+def civet_checkVersion(civet_version:, opt:, fatal:false)
+   #
+   print ("Entering method *civet_checkVersion* ...\n") if opt.debug
     
-    versions = ["1.1.7", "1.1.9", "1.1.11"]
-    if !versions.include?(civet_version) then
-        sprintf("This function has not been tested with Civet version %s. Use at your own risk.", civet_version)
-    end
-    #
-    print ("Exiting method *civet_checkVersion* ...\n") if opt.debug
+   versions = ["1.1.7", "1.1.9", "1.1.11", "2.1.1"]
+   if !versions.include?(civet_version) then
+      print sprintf("\n** Warning: This function has not been tested with Civet version %s.", civet_version)
+      if ( fatal ) then
+         puts sprintf("  ABORTING RUN ... \n")
+         exit
+      else
+         puts sprintf("  Use at your own risk.\n")
+      end
+   end
+   #
+   print ("Exiting method *civet_checkVersion* ...\n") if opt.debug
 end
 
 
@@ -379,15 +389,16 @@ def civet_getFilenameCorticalThickness(civet_keyname:, civet_scanid:, settings:,
    print ("Entering method *civet_getFilenameCorticalThickness* ...\n")  if opt.debug
    civet_subdir = 'thickness'
    civet_suffix = '_native_rms'
+   civet_thickness_method = '_tlaplace'
 
    # if rsl requested, append to suffix
    rsl = resampled ? '_rsl' : ''
    
    # get LH/RH surfaces
-   civet_suffix_lh = civet_suffix + rsl + '_tlink_20mm_left.txt'
+   civet_suffix_lh = civet_suffix + rsl + civet_thickness_method + '_20mm_left.txt'
    rxLh = civet_getFilename(civet_keyname:civet_keyname, civet_scanid:civet_scanid, civet_subdir:civet_subdir, civet_suffix:civet_suffix_lh, settings:settings, opt:opt, fullpath:fullpath, checkExistence:checkExistence)
    #
-   civet_suffix_rh = civet_suffix + rsl + '_tlink_20mm_right.txt'
+   civet_suffix_rh = civet_suffix + rsl + civet_thickness_method + '_20mm_right.txt'
    rxRh = civet_getFilename(civet_keyname:civet_keyname, civet_scanid:civet_scanid, civet_subdir:civet_subdir, civet_suffix:civet_suffix_rh, settings:settings, opt:opt, fullpath:fullpath, checkExistence:checkExistence)
 
    print ("Exiting method *civet_getFilenameCorticalThickness* ...\n")  if opt.debug
@@ -442,6 +453,23 @@ def civet_getFilenameNonlinearTransform(civet_keyname:, civet_scanid:, settings:
    return [rxXfm, rxGrid]
 end   
 
+
+def civet_getFilenamesVbmBlurred(civet_keyname:, civet_scanid:, settings:, opt:, fullpath:true, checkExistence:true)
+   print ("Entering method *civet_getFilenamesVbmBlurred* ...\n")  if opt.debug
+   civet_subdir = 'VBM'
+
+   civet_suffix = '_smooth_8mm_gm.mnc'
+   rxGm = civet_getFilename(civet_keyname:civet_keyname, civet_scanid:civet_scanid, civet_subdir:civet_subdir, civet_suffix:civet_suffix, settings:settings, opt:opt, fullpath:fullpath, checkExistence:checkExistence)
+   
+   civet_suffix = '_smooth_8mm_wm.mnc'
+   rxWm = civet_getFilename(civet_keyname:civet_keyname, civet_scanid:civet_scanid, civet_subdir:civet_subdir, civet_suffix:civet_suffix, settings:settings, opt:opt, fullpath:fullpath, checkExistence:checkExistence)
+   
+   civet_suffix = '_smooth_8mm_csf.mnc'
+   rxCsf = civet_getFilename(civet_keyname:civet_keyname, civet_scanid:civet_scanid, civet_subdir:civet_subdir, civet_suffix:civet_suffix, settings:settings, opt:opt, fullpath:fullpath, checkExistence:checkExistence)
+
+   print ("Exiting method *civet_getFilenamesVbmBlurred* ...\n")  if opt.debug
+   return [rxGm, rxWm, rxCsf]
+end   
 
 
 # define methods to return Civet directory names

@@ -117,7 +117,6 @@ ELDERLY_MODEL_PMAP_STDEV_WHITE_VOLUME <- settings$ELDERLY_MODEL_PMAP_STDEV_WHITE
 VBM_GM_ZSCORE_VOLUME_SUFFIX <- settings$VBM_GM_ZSCORE_VOLUME_SUFFIX
 VBM_WM_ZSCORE_VOLUME_SUFFIX <- settings$VBM_WM_ZSCORE_VOLUME_SUFFIX
 
-
 # define some useful subdirectories
 vbm_dirname <- paste("VBM", opt$civetScanDate, sep="-")
 LORIS_ROOT_DIR <- settings$LORIS_ROOT_DIR
@@ -125,6 +124,16 @@ loris_subject_rootDir <- file.path(LORIS_ROOT_DIR, opt$keyname)
 vbm_subject_rootDir <- file.path(loris_subject_rootDir, vbm_dirname)
 vbm_subject_logsDir <- file.path(vbm_subject_rootDir, "logs")
 vbm_subject_imagesDir <- file.path(vbm_subject_rootDir, "images")
+
+# changes related to implementing use of skull-stripped VBM volumes in Civet >= 1.1.12. 
+# ... decided to create the VBM volumes myself (skull-stripped)
+VBM_FWHM = "8"
+VBM_VOLNAME_GM_NOSKULL = paste("smooth_", VBM_FWHM, "mm_gm_noskull_blur.mnc", sep="")
+VBM_VOLNAME_WM_NOSKULL = paste("smooth_", VBM_FWHM, "mm_wm_noskull_blur.mnc", sep="")
+#
+vbm_volname_gm_noskull_fullpath <- file.path(vbm_subject_rootDir, VBM_VOLNAME_GM_NOSKULL)
+vbm_volname_wm_noskull_fullpath <- file.path(vbm_subject_rootDir, VBM_VOLNAME_WM_NOSKULL)
+
 
 
 # set working directory as the VBM subject root dir
@@ -148,7 +157,6 @@ status_filename_running <- file.path(vbm_subject_logsDir, status_filename_runnin
 file.create(status_filename_running)
 
 
-
 # Compute the Gray Matter VBM
 #
 # read in the model mean and standard dev volumes
@@ -161,8 +169,7 @@ print(stdevGmFilename_fullpath)
 stdevGmVol <- mincIO.readVolume(stdevGmFilename_fullpath, volumeType="anatomical")
 
 # read in the subject's blurred gray matter volume
-blurred_volumes_fullpath <- civet.getFilenameVbmBlurred(opt$keyname, opt$civetScanDate, settings, opt, fullpath=TRUE, checkExistence=TRUE, symmetrical=FALSE)
-gmVol <- mincIO.readVolume(blurred_volumes_fullpath$gm, volumeType="anatomical")
+gmVol <- mincIO.readVolume(vbm_volname_gm_noskull_fullpath, volumeType="anatomical")
 
 
 # print the volume ranges before we compute
@@ -261,8 +268,7 @@ stdevWmFilename_fullpath <- file.path(ELDERLY_MODEL_DIR, ELDERLY_MODEL_PMAP_STDE
 stdevWmVol <- mincIO.readVolume(stdevWmFilename_fullpath, volumeType="anatomical")
 
 # read in the subject's blurred white matter volume
-blurred_volumes_fullpath <- civet.getFilenameVbmBlurred(opt$keyname, opt$civetScanDate, settings, opt, fullpath=TRUE, checkExistence=TRUE, symmetrical=FALSE)
-wmVol <- mincIO.readVolume(blurred_volumes_fullpath$wm, volumeType="anatomical")
+wmVol <- mincIO.readVolume(vbm_volname_wm_noskull_fullpath, volumeType="anatomical")
 
 
 # print the volume ranges before we compute

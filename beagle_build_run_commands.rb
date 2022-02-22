@@ -61,9 +61,6 @@ def buildCmd_beagle_masks_generate_from_labels(scan_item, opt, settings, verbose
    loris_labelled_volname_fullPath = File.join(keyname_dir_fullPath, aal_dir, loris_labelled_volname)
    cmd << "--labelledAALvolume #{loris_labelled_volname_fullPath} "
    
-   # get the Civet-generated tissue classification volume name
-   if !civet_classify_volname_fullPath=civet_getFilenameClassify(civet_keyname:scan_item["keyname"], civet_scanid:scan_item["civetScanDate"], settings:settings, opt:opt) then exit end
-   cmd << "--classifyVolume #{civet_classify_volname_fullPath} "
    cmd << "--settingsFile #{opt.settingsFile} "
    return cmd
 end  
