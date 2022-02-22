@@ -35,9 +35,8 @@ begin
    opt.debug               = false
    opt.fake                = false
    opt.keyname             = ""          # subject keyname
-   opt.civetScanDate            = ""
+   opt.civetScanDate       = ""
    opt.aalVolname          = ""          # input subject's AAL labelled volume
-   opt.classifyVolname     = ""          # input subject's tissue classification volume
    opt.logDir              = ""          # logfile/status directory
    opt.logfile             = ""          # logfile
    opt.tmpDir              = ""          # work directory
@@ -68,11 +67,6 @@ begin
       opts.on('--labelledAALvolume aal_label_volume', "subject's AAL labelled volume") do |aalVol|
          opt.aalVolname = aalVol.to_s
          puts "** Subject input AAL label volume: " + opt.aalVolname if opt.verbose
-      end
-      
-      opts.on('--classifyVolume aal_label_volume', "subject's tissue classification volume") do |classVol|
-         opt.classifyVolname = classVol.to_s
-         puts "** Subject input tissue classification volume: " + opt.classifyVolname if opt.verbose
       end
       
       opts.on('--tmpDir tmpDir', "Temp work directory (default is system tmp dir)") do |x|
@@ -117,29 +111,24 @@ begin
    pp(settings) if opt.debug
 
 
-   # init selected variables
+   # init selected constants
    LORIS_ROOT_DIR = settings['LORIS_ROOT_DIR']
    CIVET_VERSION = settings['CIVET_VERSION']
-   CIVET_TISSUE_TYPE_BACKGROUND = settings['CIVET_TISSUE_TYPE_BACKGROUND']
-   CIVET_TISSUE_TYPE_CSF = settings['CIVET_TISSUE_TYPE_CSF']
-   CIVET_TISSUE_TYPE_GM = settings['CIVET_TISSUE_TYPE_GM']
-   CIVET_TISSUE_TYPE_WM = settings['CIVET_TISSUE_TYPE_WM']
-   CIVET_CLASSIFY_DISCRETE_VOLUME_SUFFIX = settings['CIVET_CLASSIFY_DISCRETE_VOLUME_SUFFIX']
    AAL_CEREBELLUM_LABEL_RANGE = settings['AAL_CEREBELLUM_LABEL_RANGE']
    #
    MASKS_AAL_CEREBELLUM_FILENAME = settings['MASKS_AAL_CEREBELLUM_FILENAME']
    MASKS_CEREBELLUM_GM_FILENAME = settings['MASKS_CEREBELLUM_GM_FILENAME']
    MASKS_CEREBELLUM_WM_FILENAME = settings['MASKS_CEREBELLUM_WM_FILENAME']
    MASKS_CEREBELLUM_GMWM_FILENAME = settings['MASKS_CEREBELLUM_GMWM_FILENAME']
-   MASKS_WHOLEBRAIN_CSF_FILENAME = settings['MASKS_WHOLEBRAIN_CSF_FILENAME']
    MASKS_WHOLEBRAIN_GM_FILENAME = settings['MASKS_WHOLEBRAIN_GM_FILENAME']
    MASKS_WHOLEBRAIN_WM_FILENAME = settings['MASKS_WHOLEBRAIN_WM_FILENAME']
-   MASKS_CORTICAL_WM_FILENAME = settings['MASKS_CORTICAL_WM_FILENAME']
    #
    tmp = settings['AAL_CEREBELLUM_LABEL_RANGE'].split(',')
    AAL_CEREBELLUM_LABEL_RANGE = [tmp[0].to_i, tmp[1].to_i]
    AAL_LABELLED_SUBJECT_VOLUME_SUFFIX = settings['AAL_LABELLED_SUBJECT_VOLUME_SUFFIX']
 
+
+   # init selected variables
    keyname_dir_fullPath = File.join(LORIS_ROOT_DIR, opt.keyname)
    masks_dir = 'masks-' + opt.civetScanDate
    masks_dir_fullPath = File.join(keyname_dir_fullPath, masks_dir)
@@ -162,14 +151,14 @@ begin
    end
    if !File.exists?(opt.tmpDir) then Dir.mkdir(opt.tmpDir) end
    
-   # ensure that both input volumes have been specified
-   if ( !File.exists?(opt.aalVolname) or !File.exists?(opt.classifyVolname) ) then
-      puts "\n!!! Please specify both input volumes (label and tissue classification)"
+   # ensure that the input volume has been specified
+   if ( !File.exists?(opt.aalVolname) ) then
+      puts "\n!!! Please specify the AAL-labelled input volume)"
       puts opts
       exit
    end
 
-    #
+   #
    # * * * * *  END of input argument validation   * * * * * * * *
    # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
    
@@ -183,12 +172,6 @@ begin
    filename_fullPath = File.join(keyname_dir_fullPath, labels_dir, filename)
    if !File.exists?( filename_fullPath ) then
       puts sprintf("\n!!! Error: Beagle-generated AAL label volume not found: %s", filename_fullPath)
-      exit
-   end
-
-   # ensure that the Civet brain mask exists
-   if !civetBrainMask=civet_getFilenameCerebrumMask(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt, fullpath:true, checkExistence:true) then
-      puts sprintf("\n!!! Error: Attempted read of Civet brain mask for subject **%s-%s** failed.", opt.keyname, opt.civetScanDate)
       exit
    end
    #
@@ -208,51 +191,6 @@ begin
    # NB: add "status" at the end of the script name to keep this
    #     file from clobbering the log file
    set_job_status(masksLogs_dir_fullPath, "beagle_masks_generate_from_labels_JobStatus", "running")
-
-
-   # start by creating a bunch of mask volumes from the 
-   # final (discrete-ish, non-pve) tissue classification volume (stored as discrete-ish float values)
-   #
-   # create a gray matter mask from the final classify volume
-   fudge = 0.1
-   const1 = CIVET_TISSUE_TYPE_GM.to_f - fudge
-   const2 = CIVET_TISSUE_TYPE_GM.to_f + fudge
-   cmd = "mincmath -clobber -verbose "
-   cmd << "-const2 #{const1.to_s} #{const2.to_s} "
-   cmd << "-segment "
-   cmd << "#{opt.classifyVolname} "
-   cmd << "#{masks_dir_fullPath}/#{MASKS_WHOLEBRAIN_GM_FILENAME} "
-   do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
-
-   # create a white matter mask from the final classify volume
-   # ... this mask contains all white matter: cortical, cerebellum, and brainstem
-   const1 = CIVET_TISSUE_TYPE_WM.to_f - fudge
-   const2 = CIVET_TISSUE_TYPE_WM.to_f + fudge
-   cmd = "mincmath -clobber -verbose "
-   cmd << "-const2 #{const1.to_s} #{const2.to_s} "
-   cmd << "-segment "
-   cmd << "#{opt.classifyVolname} "
-   cmd << "#{masks_dir_fullPath}/#{MASKS_WHOLEBRAIN_WM_FILENAME} "
-   do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
-
-   # create a cortical white matter mask by applying the Civet brainmask to the above WM mask
-   # ... this mask does NOT contain cerebellum or brainstem
-   cmd = "mincmath -clobber -verbose "
-   cmd << "-and "
-   cmd << "#{masks_dir_fullPath}/#{MASKS_WHOLEBRAIN_WM_FILENAME} "
-   cmd << "#{civetBrainMask} "
-   cmd << "#{masks_dir_fullPath}/#{MASKS_CORTICAL_WM_FILENAME} "
-   do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
-
-   # create a CSF mask from the final classify volume
-   const1 = CIVET_TISSUE_TYPE_CSF.to_f - fudge
-   const2 = CIVET_TISSUE_TYPE_CSF.to_f + fudge
-   cmd = "mincmath -clobber -verbose "
-   cmd << "-const2 #{const1.to_s} #{const2.to_s} "
-   cmd << "-segment "
-   cmd << "#{opt.classifyVolname} "
-   cmd << "#{masks_dir_fullPath}/#{MASKS_WHOLEBRAIN_CSF_FILENAME} "
-   do_cmd(cmd, opt.verbose, opt.fake, opt.logfile)
 
 
    # extract the left and right cerebellum from the AAL volume

@@ -95,6 +95,8 @@ begin
    CIVET_ROOT_DIR = settings['CIVET_ROOT_DIR']
    CIVET_VERSION = settings['CIVET_VERSION']
 
+   MASKS_WHOLEBRAIN_GM_FILENAME = settings['MASKS_WHOLEBRAIN_GM_FILENAME']
+
    AAL_LABELS_VERSION = settings['AAL_LABELS_VERSION']
    AAL_LABELS_DIR = settings['AAL_LABELS_DIR']
    AAL_LABELS_VOLUME = settings['AAL_LABELS_VOLUME']
@@ -113,7 +115,10 @@ begin
    AAL_LABEL_SURFVIZ_VOLUME_SUFFIX = '_t1_final_' + AAL_LABELS_VERSION + 'Labels_forSurfVizOnly.mnc'
    AAL_MASKED_LABEL_VOLUME_SUFFIX = '_t1_final_' + AAL_LABELS_VERSION + 'Labels_gmMask.mnc'
 
+
    keyname_dir_fullPath = File.join(LORIS_ROOT_DIR, opt.keyname)
+   masks_dir = 'masks-' + opt.civetScanDate
+   masks_dir_fullPath = File.join(keyname_dir_fullPath, masks_dir)
 
 
 
@@ -145,6 +150,15 @@ begin
       puts opts
       exit
    end
+
+   # the discrete gray matter mask exists?
+   discrete_gm_mask = File.join(masks_dir_fullPath, MASKS_WHOLEBRAIN_GM_FILENAME)
+   if ( !File.exists?(discrete_gm_mask) ) then
+      puts sprintf("\n*** Error: Gray matter mask volume [%s] does not appear to exist", discrete_gm_mask)
+      puts opts
+      exit
+   end
+
    #
    # * * * * *  END of non-subject-specific validation   * * * * *
    # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
@@ -168,7 +182,6 @@ begin
    end
    
    # check for Civet-generated gray matter mask (PVE) and T1 final in linear stx space
-   if !filename_fullPath = civet_getFilenameGrayMatterPve(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt) then exit end
    if !filename_fullPath = civet_getFilenameStxT1(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt) then exit end
    #
    # * * * * *  END of subject/scan-specific validation   * * * * *
@@ -251,48 +264,34 @@ begin
    do_cmd(cmd, opt.verbose, opt.fake)
    
    
-   # Great.  But now let's apply the gray matter mask to it, in order to get
+   # Great.  But now let's apply a gray matter mask to it, in order to get
    # rid of the labels that are not in gray matter.
    #
-   pve_mask_file_fullPath = civet_getFilenameGrayMatterPve(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt)
-
-   # create a tmp dir to hold the binarized PVE mask
-   tmp_dir = 'beagle_labels_fit_AAL_' + $$.to_s
-   tmp_dir_fullPath = File.join(Dir.tmpdir, tmp_dir)
-   FileUtils.mkdir_p(tmp_dir_fullPath)
-   bin_mask_file_fullPath = File.join(tmp_dir_fullPath, 'cerebrum_gm_mask.mnc')
-   
-   # build the command line and create the mask
-   cmd = "mincmath -verbose  "
-   cmd << "-clobber  "
-   cmd << "-const2 0.5 1.0  "
-   cmd << "-segment  "
-   cmd << "-unsigned -byte  "
-   cmd << "#{pve_mask_file_fullPath}  "
-   cmd << "#{bin_mask_file_fullPath}"
-   do_cmd(cmd, opt.verbose, opt.fake)
-   
-   # apply the mask to the label volume
-   # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
    # define output file name
    labels_dir = 'AAL-' + opt.civetScanDate
    labels_dir_fullPath = File.join(LORIS_ROOT_DIR, opt.keyname, labels_dir)
+   #
    masked_label_volname = opt.keyname + AAL_MASKED_LABEL_VOLUME_SUFFIX
    masked_label_volname_fullPath = File.join(labels_dir_fullPath, masked_label_volname)
+   #
    cmd = "mincmath -verbose   "
    cmd << "-clobber  "
    cmd << "-short  -unsigned  "
    cmd << "-mult  "
-   cmd << "#{bin_mask_file_fullPath}  "
+   cmd << "#{discrete_gm_mask}  "
    cmd << "#{label_volname_fullPath}  "
    cmd << "#{masked_label_volname_fullPath}"
    do_cmd(cmd, opt.verbose, opt.fake)
    
+
    #Done. Now's let's create a surface visualization of the labels
    #
+   # create a tmp dir
+   tmp_dir = 'beagle_labels_fit_AAL_' + $$.to_s
+   tmp_dir_fullPath = File.join(Dir.tmpdir, tmp_dir)
+   FileUtils.mkdir_p(tmp_dir_fullPath)
+
    # create the LH surfaces ...
-   #
-   # define the subject's surfaces and the tmp output subdir
    surfaceLh_fullPath, surfaceRh_fullPath = civet_getFilenameGrayMatterSurfaces(civet_keyname:opt.keyname, civet_scanid:opt.civetScanDate, settings:settings, opt:opt, resampled:false)
    tmpOutLh_dir = File.join(tmp_dir_fullPath, 'images_Lh')
    FileUtils.mkdir_p(tmpOutLh_dir)
